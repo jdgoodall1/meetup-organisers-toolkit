@@ -24,6 +24,7 @@ const Login: React.FC = () => {
         <h1>LogiMeet</h1>
         <p>Sign in to manage your events</p>
         
+        {/* Email/Password Form */}
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="email">Email:</label>
@@ -33,7 +34,7 @@ const Login: React.FC = () => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              placeholder="demo@example.com"
+              placeholder="Enter your email"
             />
           </div>
           
@@ -45,7 +46,7 @@ const Login: React.FC = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              placeholder="password"
+              placeholder="Enter your password"
             />
           </div>
           
@@ -56,10 +57,11 @@ const Login: React.FC = () => {
           </button>
         </form>
         
-        <div className="demo-credentials">
-          <p><strong>Demo Credentials:</strong></p>
-          <p>Email: demo@example.com</p>
-          <p>Password: password</p>
+        <div className="auth-info">
+          <p><strong>Authentication:</strong></p>
+          <p>• Email/Password (AWS Cognito)</p>
+          <p>• Secure session management</p>
+          <p>• Create account or sign in with existing credentials</p>
         </div>
       </div>
     </div>

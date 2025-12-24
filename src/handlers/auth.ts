@@ -1,95 +1,84 @@
 // Authentication API handlers
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { authenticateRequest, getUserProfile, invalidateSession } from '../shared/auth';
+import { invalidateSession } from '../shared/auth';
 import { createResponse, handleError } from '../shared/utils';
 import { ApiResponse } from '../shared/types';
+import { withAuthAndCors, AuthenticatedContext } from '../shared/middleware';
+import { dynamoDocClient } from '../shared/aws-clients';
+import { PutCommand } from '@aws-sdk/lib-dynamodb';
+import { config } from '../shared/config';
 
 /**
  * GET /auth/profile - Get current user profile
  */
-export async function getProfile(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  try {
-    const { user, profile } = await authenticateRequest(event);
-    
-    const response: ApiResponse = {
-      success: true,
-      data: profile,
-      message: 'Profile retrieved successfully',
-    };
+async function getProfile(event: APIGatewayProxyEvent, context: AuthenticatedContext): Promise<APIGatewayProxyResult> {
+  const response: ApiResponse = {
+    success: true,
+    data: context.profile,
+    message: 'Profile retrieved successfully',
+  };
 
-    return createResponse(200, response);
-  } catch (error) {
-    return handleError(error);
-  }
+  return createResponse(200, response);
 }
 
 /**
  * PUT /auth/profile - Update user profile
  */
-export async function updateProfile(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  try {
-    const { user, profile } = await authenticateRequest(event);
-    
-    if (!event.body) {
-      throw new Error('Request body is required');
-    }
-
-    const updates = JSON.parse(event.body);
-    
-    // Only allow updating certain fields
-    const allowedFields = ['name', 'notificationPreferences', 'manualConfirmationEnabled'];
-    const filteredUpdates = Object.keys(updates)
-      .filter(key => allowedFields.includes(key))
-      .reduce((obj, key) => {
-        obj[key] = updates[key];
-        return obj;
-      }, {} as any);
-
-    if (Object.keys(filteredUpdates).length === 0) {
-      throw new Error('No valid fields to update');
-    }
-
-    // Update profile with new values
-    const updatedProfile = {
-      ...profile,
-      ...filteredUpdates,
-      updatedAt: new Date(),
-    };
-
-    // Save to database (this would be implemented in the auth service)
-    // For now, we'll return the updated profile
-    
-    const response: ApiResponse = {
-      success: true,
-      data: updatedProfile,
-      message: 'Profile updated successfully',
-    };
-
-    return createResponse(200, response);
-  } catch (error) {
-    return handleError(error);
+async function updateProfile(event: APIGatewayProxyEvent, context: AuthenticatedContext): Promise<APIGatewayProxyResult> {
+  if (!event.body) {
+    throw new Error('Request body is required');
   }
+
+  const updates = JSON.parse(event.body);
+  
+  // Only allow updating certain fields
+  const allowedFields = ['name', 'notificationPreferences', 'manualConfirmationEnabled'];
+  const filteredUpdates = Object.keys(updates)
+    .filter(key => allowedFields.includes(key))
+    .reduce((obj, key) => {
+      obj[key] = updates[key];
+      return obj;
+    }, {} as any);
+
+  if (Object.keys(filteredUpdates).length === 0) {
+    throw new Error('No valid fields to update');
+  }
+
+  // Update profile with new values
+  const updatedProfile = {
+    ...context.profile,
+    ...filteredUpdates,
+    updatedAt: new Date(),
+  };
+
+  // Save to database
+  await dynamoDocClient.send(new PutCommand({
+    TableName: config.tables.users,
+    Item: updatedProfile,
+  }));
+  
+  const response: ApiResponse = {
+    success: true,
+    data: updatedProfile,
+    message: 'Profile updated successfully',
+  };
+
+  return createResponse(200, response);
 }
 
 /**
  * POST /auth/logout - Logout user
  */
-export async function logout(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  try {
-    const { user } = await authenticateRequest(event);
-    
-    await invalidateSession(user.userId);
-    
-    const response: ApiResponse = {
-      success: true,
-      message: 'Logged out successfully',
-    };
+async function logout(event: APIGatewayProxyEvent, context: AuthenticatedContext): Promise<APIGatewayProxyResult> {
+  await invalidateSession(context.user.userId);
+  
+  const response: ApiResponse = {
+    success: true,
+    message: 'Logged out successfully',
+  };
 
-    return createResponse(200, response);
-  } catch (error) {
-    return handleError(error);
-  }
+  return createResponse(200, response);
 }
 
 /**
@@ -101,11 +90,11 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
   try {
     switch (`${httpMethod} ${resource}`) {
       case 'GET /auth/profile':
-        return await getProfile(event);
+        return await withAuthAndCors(getProfile)(event);
       case 'PUT /auth/profile':
-        return await updateProfile(event);
+        return await withAuthAndCors(updateProfile)(event);
       case 'POST /auth/logout':
-        return await logout(event);
+        return await withAuthAndCors(logout)(event);
       default:
         return createResponse(404, {
           success: false,

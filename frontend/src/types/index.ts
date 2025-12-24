@@ -110,7 +110,7 @@ export interface AuthContextType {
   user: UserProfile | null;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   loading: boolean;
 }
 

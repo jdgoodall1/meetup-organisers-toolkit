@@ -1,7 +1,7 @@
 // Messaging Lambda handler
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { createResponse } from '../shared/utils';
+import { createResponse, handleError } from '../shared/utils';
 import { validateConfig } from '../shared/config';
 
 export const handler = async (
@@ -12,7 +12,6 @@ export const handler = async (
 
     return createResponse(200, { message: 'Messaging handler' });
   } catch (error) {
-    console.error('Messaging handler error:', error);
-    return createResponse(500, null, 'Internal server error');
+    return handleError(error);
   }
 };

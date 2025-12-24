@@ -1,7 +1,7 @@
 // Events Lambda handler
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { createResponse } from '../shared/utils';
+import { createResponse, handleError } from '../shared/utils';
 import { validateConfig } from '../shared/config';
 
 export const handler = async (
@@ -23,10 +23,9 @@ export const handler = async (
       case 'DELETE':
         return createResponse(200, { message: 'Events handler - DELETE' });
       default:
-        return createResponse(405, null, 'Method not allowed');
+        return createResponse(405, { error: 'Method not allowed' });
     }
   } catch (error) {
-    console.error('Events handler error:', error);
-    return createResponse(500, null, 'Internal server error');
+    return handleError(error);
   }
 };

@@ -57,22 +57,10 @@ Resources:
       UserPoolId: !Ref UserPool
       ClientName: !Sub ${AWS::StackName}-client
       GenerateSecret: false
-      SupportedIdentityProviders:
-        - COGNITO
-        - Google
-      CallbackURLs:
-        - http://localhost:3000/callback
-        - https://main.d1234567890.amplifyapp.com/callback
-      LogoutURLs:
-        - http://localhost:3000/
-        - https://main.d1234567890.amplifyapp.com/
-      AllowedOAuthFlows:
-        - code
-      AllowedOAuthScopes:
-        - email
-        - openid
-        - profile
-      AllowedOAuthFlowsUserPoolClient: true
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
 
   # DynamoDB Tables
   EventsTable:

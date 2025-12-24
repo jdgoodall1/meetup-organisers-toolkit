@@ -16,14 +16,47 @@ export function generateId(): string {
 export function createResponse<T>(
   statusCode: number,
   data?: T,
-  error?: string,
-  message?: string
+  headers?: Record<string, string>
 ): { statusCode: number; body: string; headers: Record<string, string> } {
   const response: ApiResponse<T> = {
     success: statusCode >= 200 && statusCode < 300,
     data,
-    error,
-    message,
+  };
+
+  return {
+    statusCode,
+    body: JSON.stringify(response),
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+      'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+      ...headers,
+    },
+  };
+}
+
+/**
+ * Handle errors and create error responses
+ */
+export function handleError(error: unknown): { statusCode: number; body: string; headers: Record<string, string> } {
+  console.error('Error:', error);
+  
+  const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+  
+  // Determine status code based on error type
+  let statusCode = 500;
+  if (errorMessage.includes('authorization') || errorMessage.includes('token') || errorMessage.includes('auth')) {
+    statusCode = 401;
+  } else if (errorMessage.includes('not found')) {
+    statusCode = 404;
+  } else if (errorMessage.includes('validation') || errorMessage.includes('invalid') || errorMessage.includes('required')) {
+    statusCode = 400;
+  }
+
+  const response: ApiResponse = {
+    success: false,
+    error: errorMessage,
   };
 
   return {
