@@ -1,0 +1,39 @@
+{
+  "name": "logimeet",
+  "version": "1.0.0",
+  "description": "Serverless meetup management platform with Meetup.com and LinkedIn integration",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "deploy": "sam build && sam deploy",
+    "local": "sam local start-api"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/client-cognito-identity-provider": "^3.0.0",
+    "@aws-sdk/client-eventbridge": "^3.0.0",
+    "@aws-sdk/client-sqs": "^3.0.0",
+    "@aws-sdk/lib-dynamodb": "^3.0.0",
+    "aws-lambda": "^1.0.7",
+    "jsonwebtoken": "^9.0.0",
+    "axios": "^1.6.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/jest": "^29.0.0",
+    "@types/aws-lambda": "^8.10.0",
+    "@types/jsonwebtoken": "^9.0.0",
+    "@types/uuid": "^9.0.0",
+    "typescript": "^5.0.0",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.0.0",
+    "fast-check": "^3.15.0",
+    "@aws-sdk/types": "^3.0.0"
+  },
+  "keywords": ["serverless", "aws", "meetup", "linkedin", "event-management"],
+  "author": "",
+  "license": "MIT"
+}
