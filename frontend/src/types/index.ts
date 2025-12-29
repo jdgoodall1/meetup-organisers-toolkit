@@ -110,8 +110,57 @@ export interface AuthContextType {
   user: UserProfile | null;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
+  signup: (email: string, password: string, name?: string) => Promise<void>;
+  confirmSignup: (email: string, confirmationCode: string) => Promise<void>;
   logout: () => Promise<void>;
   loading: boolean;
+}
+
+// LinkedIn Types
+export interface LinkedInProfile {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email?: string;
+  profilePicture?: string;
+}
+
+export interface LinkedInOrganization {
+  id: string;
+  name: string;
+  type: 'company' | 'group';
+  permissions: string[];
+  canCreateEvents: boolean;
+  canCreatePosts: boolean;
+}
+
+export interface LinkedInEvent {
+  id?: string;
+  name: string;
+  description: string;
+  startDateTime: string;
+  endDateTime?: string;
+  location?: {
+    name: string;
+    address?: string;
+    city?: string;
+    country?: string;
+  };
+  status?: 'draft' | 'published' | 'cancelled';
+  visibility?: 'public' | 'members_only';
+  organizationId?: string;
+  groupId?: string;
+  eventType?: 'online' | 'in_person' | 'hybrid';
+  registrationRequired?: boolean;
+}
+
+export interface LinkedInPost {
+  id?: string;
+  content: string;
+  visibility: 'public' | 'connections' | 'logged_in_members';
+  organizationId?: string;
+  scheduledTime?: string;
+  status?: 'draft' | 'published' | 'scheduled';
 }
 
 // Form Types

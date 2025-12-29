@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { AuthContextType, UserProfile } from '../types';
 import { 
   signIn, 
+  signUp,
+  confirmSignUp,
   signOut, 
   getCurrentUser, 
   fetchAuthSession,
@@ -107,7 +109,99 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     } catch (error) {
       console.error('Login error:', error);
-      throw new Error(error instanceof Error ? error.message : 'Login failed');
+      
+      // Provide more specific error messages
+      if (error instanceof Error) {
+        const message = error.message;
+        if (message.includes('UserNotConfirmedException')) {
+          throw new Error('Please confirm your email address before signing in.');
+        } else if (message.includes('NotAuthorizedException')) {
+          throw new Error('Invalid email or password.');
+        } else if (message.includes('UserNotFoundException')) {
+          throw new Error('No account found with this email address.');
+        } else if (message.includes('TooManyRequestsException')) {
+          throw new Error('Too many login attempts. Please wait a few minutes before trying again.');
+        } else {
+          throw new Error(message);
+        }
+      } else {
+        throw new Error('Login failed. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signup = async (email: string, password: string, name?: string): Promise<void> => {
+    setLoading(true);
+    
+    try {
+      const signUpResult = await signUp({
+        username: email,
+        password: password,
+        options: {
+          userAttributes: {
+            email: email,
+            name: name || email.split('@')[0], // Use email prefix as default name
+          },
+        },
+      });
+
+      // Don't throw an error if confirmation is required - this is expected
+      if (!signUpResult.isSignUpComplete) {
+        // This is normal - user needs to confirm their email
+        return; // Don't throw an error, just return
+      }
+    } catch (error) {
+      console.error('Signup error:', error);
+      if (error instanceof Error) {
+        if (error.message.includes('UsernameExistsException') || error.message.includes('already exists')) {
+          throw new Error('An account with this email already exists. Please try logging in instead.');
+        } else {
+          throw new Error(error.message);
+        }
+      } else {
+        throw new Error('Signup failed');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const confirmSignup = async (email: string, confirmationCode: string): Promise<void> => {
+    setLoading(true);
+    
+    try {
+      const result = await confirmSignUp({
+        username: email,
+        confirmationCode: confirmationCode,
+      });
+      
+      // Log the result for debugging
+      console.log('Confirmation result:', result);
+      
+    } catch (error) {
+      console.error('Confirmation error:', error);
+      
+      // Provide more specific error messages
+      if (error instanceof Error) {
+        const message = error.message;
+        if (message.includes('CodeMismatchException')) {
+          throw new Error('Invalid confirmation code. Please check your email and try again.');
+        } else if (message.includes('ExpiredCodeException')) {
+          throw new Error('Confirmation code has expired. Please request a new code.');
+        } else if (message.includes('NotAuthorizedException')) {
+          throw new Error('This email is already confirmed. You can sign in now.');
+        } else if (message.includes('UserNotFoundException')) {
+          throw new Error('User not found. Please sign up first.');
+        } else if (message.includes('TooManyRequestsException')) {
+          throw new Error('Too many attempts. Please wait a few minutes before trying again.');
+        } else {
+          throw new Error(message);
+        }
+      } else {
+        throw new Error('Confirmation failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -133,6 +227,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     user,
     isAuthenticated: !!user,
     login,
+    signup,
+    confirmSignup,
     logout,
     loading,
   };

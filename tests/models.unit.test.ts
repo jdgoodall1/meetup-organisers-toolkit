@@ -270,7 +270,7 @@ describe('Data Models Unit Tests', () => {
           publishToLinkedIn: true
         };
 
-        const event = EventModel.create(eventData);
+        const event = EventModel.createNew(eventData);
 
         expect(event.eventId).toBeDefined();
         expect(event.title).toBe('Test Event');
@@ -290,7 +290,7 @@ describe('Data Models Unit Tests', () => {
           location: 'Test Location'
         };
 
-        const event = EventModel.create(eventData);
+        const event = EventModel.createNew(eventData);
 
         expect(event.meetupEventStatus).toBe('draft');
         expect(event.platformStatus).toBe('pending_confirmation');
@@ -314,7 +314,7 @@ describe('Data Models Unit Tests', () => {
           location: 'Test Location'
         };
 
-        const event = EventModel.create(eventData);
+        const event = EventModel.createNew(eventData);
         const serialized = EventModel.serialize(event);
         const deserialized = EventModel.deserialize(serialized);
 

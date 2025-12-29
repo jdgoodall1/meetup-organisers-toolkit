@@ -2,6 +2,16 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import EventForm from '../EventForm';
 import { Event } from '../../types';
+import { apiService } from '../../services/api';
+
+// Mock the API service
+jest.mock('../../services/api', () => ({
+  apiService: {
+    getLinkedInOrganizations: jest.fn(),
+  },
+}));
+
+const mockApiService = apiService as jest.Mocked<typeof apiService>;
 
 describe('EventForm Component', () => {
   const mockOnSave = jest.fn();
@@ -32,6 +42,10 @@ describe('EventForm Component', () => {
   beforeEach(() => {
     mockOnSave.mockClear();
     mockOnCancel.mockClear();
+    mockApiService.getLinkedInOrganizations.mockClear();
+    
+    // Default mock: LinkedIn not connected
+    mockApiService.getLinkedInOrganizations.mockRejectedValue(new Error('Not connected'));
   });
 
   it('renders create form when no event is provided', () => {
@@ -114,21 +128,40 @@ describe('EventForm Component', () => {
     });
   });
 
-  it('handles checkbox interactions', async () => {
-    const user = userEvent.setup();
+  it('handles checkbox interactions when LinkedIn is connected', async () => {
+    // Mock LinkedIn connected with permissions
+    mockApiService.getLinkedInOrganizations.mockResolvedValue([
+      {
+        id: 'org-1',
+        name: 'Test Organization',
+        type: 'company',
+        permissions: ['CREATE_EVENTS', 'CREATE_POSTS'],
+        canCreateEvents: true,
+        canCreatePosts: true,
+      },
+    ]);
+
+    render(<EventForm onSave={mockOnSave} onCancel={mockOnCancel} />);
+    
+    // Wait for LinkedIn check to complete
+    await screen.findByText('Not connected');
+    
+    const confirmationCheckbox = screen.getByLabelText(/require manual confirmation/i);
+    
+    expect(confirmationCheckbox).not.toBeChecked();
+    
+    await userEvent.setup().click(confirmationCheckbox);
+    
+    expect(confirmationCheckbox).toBeChecked();
+  });
+
+  it('disables LinkedIn checkbox when not connected', async () => {
     render(<EventForm onSave={mockOnSave} onCancel={mockOnCancel} />);
     
     const linkedinCheckbox = screen.getByLabelText(/publish to linkedin/i);
-    const confirmationCheckbox = screen.getByLabelText(/require manual confirmation/i);
     
+    expect(linkedinCheckbox).toBeDisabled();
     expect(linkedinCheckbox).not.toBeChecked();
-    expect(confirmationCheckbox).not.toBeChecked();
-    
-    await user.click(linkedinCheckbox);
-    await user.click(confirmationCheckbox);
-    
-    expect(linkedinCheckbox).toBeChecked();
-    expect(confirmationCheckbox).toBeChecked();
   });
 
   it('calls onCancel when cancel button is clicked', async () => {
@@ -157,5 +190,52 @@ describe('EventForm Component', () => {
     
     // Error should be cleared
     expect(screen.queryByText('Title is required')).not.toBeInTheDocument();
+  });
+
+  it('shows LinkedIn permission status when connected', async () => {
+    // Mock LinkedIn connected with full permissions
+    mockApiService.getLinkedInOrganizations.mockResolvedValue([
+      {
+        id: 'org-1',
+        name: 'Test Organization',
+        type: 'company',
+        permissions: ['CREATE_EVENTS', 'CREATE_POSTS'],
+        canCreateEvents: true,
+        canCreatePosts: true,
+      },
+    ]);
+
+    render(<EventForm onSave={mockOnSave} onCancel={mockOnCancel} />);
+    
+    // Wait for LinkedIn check to complete and find the status
+    await screen.findByText('Full permissions (Events & Posts)');
+    
+    expect(screen.getByText('Available LinkedIn Organizations')).toBeInTheDocument();
+    expect(screen.getByText('Test Organization')).toBeInTheDocument();
+  });
+
+  it('shows permission warning when LinkedIn has limited permissions', async () => {
+    // Mock LinkedIn connected with limited permissions
+    mockApiService.getLinkedInOrganizations.mockResolvedValue([
+      {
+        id: 'org-1',
+        name: 'Test Organization',
+        type: 'company',
+        permissions: ['CREATE_POSTS'],
+        canCreateEvents: false,
+        canCreatePosts: true,
+      },
+    ]);
+
+    const user = userEvent.setup();
+    render(<EventForm onSave={mockOnSave} onCancel={mockOnCancel} />);
+    
+    // Wait for LinkedIn check to complete
+    await screen.findByText('Limited permissions (Posts only)');
+    
+    const linkedinCheckbox = screen.getByLabelText(/publish to linkedin/i);
+    await user.click(linkedinCheckbox);
+    
+    expect(screen.getByText(/You do not have permission to create LinkedIn events/)).toBeInTheDocument();
   });
 });

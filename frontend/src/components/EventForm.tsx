@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Event, EventFormData } from '../types';
+import { Event, EventFormData, LinkedInOrganization } from '../types';
+import { apiService } from '../services/api';
 
 interface EventFormProps {
   event?: Event;
   onSave: (eventData: EventFormData) => void;
   onCancel: () => void;
+  loading?: boolean;
 }
 
-const EventForm: React.FC<EventFormProps> = ({ event, onSave, onCancel }) => {
+const EventForm: React.FC<EventFormProps> = ({ event, onSave, onCancel, loading = false }) => {
   const [formData, setFormData] = useState<EventFormData>({
     title: '',
     description: '',
@@ -18,7 +20,10 @@ const EventForm: React.FC<EventFormProps> = ({ event, onSave, onCancel }) => {
     requiresConfirmation: false,
   });
 
-  const [errors, setErrors] = useState<Partial<EventFormData>>({});
+  const [errors, setErrors] = useState<Partial<Record<keyof EventFormData, string>>>({});
+  const [linkedInOrganizations, setLinkedInOrganizations] = useState<LinkedInOrganization[]>([]);
+  const [isLinkedInConnected, setIsLinkedInConnected] = useState(false);
+  const [linkedInPermissionError, setLinkedInPermissionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (event) {
@@ -32,10 +37,34 @@ const EventForm: React.FC<EventFormProps> = ({ event, onSave, onCancel }) => {
         requiresConfirmation: event.requiresConfirmation,
       });
     }
+
+    // Check LinkedIn connection and permissions
+    checkLinkedInPermissions();
   }, [event]);
 
+  const checkLinkedInPermissions = async () => {
+    try {
+      const organizations = await apiService.getLinkedInOrganizations() as LinkedInOrganization[];
+      setLinkedInOrganizations(organizations);
+      setIsLinkedInConnected(true);
+      setLinkedInPermissionError(null);
+
+      // Check if user has permission to create events
+      const hasEventPermissions = organizations.length === 0 || organizations.some((org: LinkedInOrganization) => org.canCreateEvents);
+      if (!hasEventPermissions && formData.publishToLinkedIn) {
+        setLinkedInPermissionError('You do not have permission to create LinkedIn events. You can still create posts.');
+      }
+    } catch (error) {
+      setIsLinkedInConnected(false);
+      setLinkedInOrganizations([]);
+      if (formData.publishToLinkedIn) {
+        setLinkedInPermissionError('LinkedIn not connected. Please connect your LinkedIn account to publish events.');
+      }
+    }
+  };
+
   const validateForm = (): boolean => {
-    const newErrors: Partial<EventFormData> = {};
+    const newErrors: Partial<Record<keyof EventFormData, string>> = {};
 
     if (!formData.title.trim()) {
       newErrors.title = 'Title is required';
@@ -58,6 +87,11 @@ const EventForm: React.FC<EventFormProps> = ({ event, onSave, onCancel }) => {
       newErrors.location = 'Location is required';
     }
 
+    // Validate LinkedIn publishing requirements
+    if (formData.publishToLinkedIn && !isLinkedInConnected) {
+      newErrors.publishToLinkedIn = 'LinkedIn account must be connected to publish events';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -77,7 +111,42 @@ const EventForm: React.FC<EventFormProps> = ({ event, onSave, onCancel }) => {
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: undefined }));
     }
+
+    // Handle LinkedIn publishing toggle
+    if (field === 'publishToLinkedIn' && value === true) {
+      if (!isLinkedInConnected) {
+        setLinkedInPermissionError('LinkedIn account must be connected to publish events.');
+      } else {
+        const hasEventPermissions = linkedInOrganizations.length === 0 || linkedInOrganizations.some(org => org.canCreateEvents);
+        if (!hasEventPermissions) {
+          setLinkedInPermissionError('You do not have permission to create LinkedIn events. You can still create posts.');
+        } else {
+          setLinkedInPermissionError(null);
+        }
+      }
+    } else if (field === 'publishToLinkedIn' && value === false) {
+      setLinkedInPermissionError(null);
+    }
   };
+
+  const getLinkedInStatus = () => {
+    if (!isLinkedInConnected) {
+      return { status: 'disconnected', message: 'Not connected' };
+    }
+
+    const hasEventPermissions = linkedInOrganizations.length === 0 || linkedInOrganizations.some(org => org.canCreateEvents);
+    const hasPostPermissions = linkedInOrganizations.length === 0 || linkedInOrganizations.some(org => org.canCreatePosts);
+
+    if (hasEventPermissions && hasPostPermissions) {
+      return { status: 'full', message: 'Full permissions (Events & Posts)' };
+    } else if (hasPostPermissions) {
+      return { status: 'limited', message: 'Limited permissions (Posts only)' };
+    } else {
+      return { status: 'none', message: 'No permissions' };
+    }
+  };
+
+  const linkedInStatus = getLinkedInStatus();
 
   return (
     <div className="event-form-container">
@@ -158,10 +227,48 @@ const EventForm: React.FC<EventFormProps> = ({ event, onSave, onCancel }) => {
                   type="checkbox"
                   checked={formData.publishToLinkedIn}
                   onChange={(e) => handleInputChange('publishToLinkedIn', e.target.checked)}
+                  disabled={!isLinkedInConnected}
                 />
                 <span>Publish to LinkedIn</span>
+                <div className="linkedin-status">
+                  <span className={`status-indicator ${linkedInStatus.status}`}></span>
+                  <span className="status-text">{linkedInStatus.message}</span>
+                </div>
               </label>
+              {errors.publishToLinkedIn && (
+                <span className="error-text">{errors.publishToLinkedIn}</span>
+              )}
+              {linkedInPermissionError && (
+                <div className="permission-warning">
+                  <span className="warning-icon">⚠️</span>
+                  <span>{linkedInPermissionError}</span>
+                </div>
+              )}
             </div>
+
+            {isLinkedInConnected && linkedInOrganizations.length > 0 && (
+              <div className="linkedin-organizations">
+                <h4>Available LinkedIn Organizations</h4>
+                <div className="organizations-list">
+                  {linkedInOrganizations.map(org => (
+                    <div key={org.id} className="organization-item">
+                      <span className="org-name">{org.name}</span>
+                      <div className="org-permissions">
+                        {org.canCreateEvents && (
+                          <span className="permission-badge granted">Events</span>
+                        )}
+                        {org.canCreatePosts && (
+                          <span className="permission-badge granted">Posts</span>
+                        )}
+                        {!org.canCreateEvents && !org.canCreatePosts && (
+                          <span className="permission-badge denied">No permissions</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="checkbox-group">
               <label className="checkbox-label">
@@ -176,11 +283,20 @@ const EventForm: React.FC<EventFormProps> = ({ event, onSave, onCancel }) => {
           </div>
 
           <div className="form-actions">
-            <button type="button" onClick={onCancel} className="btn-secondary">
+            <button 
+              type="button" 
+              onClick={onCancel} 
+              className="btn-secondary"
+              disabled={loading}
+            >
               Cancel
             </button>
-            <button type="submit" className="btn-primary">
-              {event ? 'Update Event' : 'Create Event'}
+            <button 
+              type="submit" 
+              className="btn-primary"
+              disabled={loading}
+            >
+              {loading ? 'Saving...' : (event ? 'Update Event' : 'Create Event')}
             </button>
           </div>
         </form>

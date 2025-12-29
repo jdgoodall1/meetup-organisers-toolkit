@@ -5,7 +5,7 @@ Description: Meetup Management Platform - Serverless infrastructure
 Globals:
   Function:
     Timeout: 30
-    Runtime: nodejs18.x
+    Runtime: nodejs22.x
     MemorySize: 256
     Environment:
       Variables:
@@ -230,7 +230,7 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub ${AWS::StackName}-scheduler-queue
-      VisibilityTimeoutSeconds: 300
+      VisibilityTimeout: 300
       MessageRetentionPeriod: 1209600  # 14 days
 
   # EventBridge Rule for periodic sync
@@ -245,12 +245,30 @@ Resources:
         - Arn: !GetAtt SyncFunction.Arn
           Id: SyncFunctionTarget
 
+  # EventBridge Rule for checking scheduled posts
+  PostScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub ${AWS::StackName}-post-schedule
+      Description: Check for scheduled posts ready for execution
+      ScheduleExpression: rate(5 minutes)
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt SchedulerFunction.Arn
+          Id: SchedulerFunctionTarget
+          Input: !Sub |
+            {
+              "source": "logimeet.scheduler",
+              "detail-type": "Check Scheduled Posts",
+              "detail": {}
+            }
+
   # Lambda Functions
   AuthFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub ${AWS::StackName}-auth
-      CodeUri: dist/
+      CodeUri: src/
       Handler: handlers/auth.handler
       Policies:
         - DynamoDBCrudPolicy:
@@ -279,7 +297,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub ${AWS::StackName}-events
-      CodeUri: dist/
+      CodeUri: src/
       Handler: handlers/events.handler
       Policies:
         - DynamoDBCrudPolicy:
@@ -318,19 +336,38 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub ${AWS::StackName}-social
-      CodeUri: dist/
+      CodeUri: src/
       Handler: handlers/social.handler
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ScheduledPostsTable
         - SQSSendMessagePolicy:
             QueueName: !GetAtt SchedulerQueue.QueueName
+      Events:
+        SchedulePosts:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /social/schedule
+            Method: post
+        GetPosts:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /social/posts
+            Method: get
+        CancelPost:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /social/posts/{id}
+            Method: delete
 
   MessagingFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub ${AWS::StackName}-messaging
-      CodeUri: dist/
+      CodeUri: src/
       Handler: handlers/messaging.handler
       Policies:
         - DynamoDBCrudPolicy:
@@ -342,7 +379,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub ${AWS::StackName}-notifications
-      CodeUri: dist/
+      CodeUri: src/
       Handler: handlers/notifications.handler
       Policies:
         - DynamoDBCrudPolicy:
@@ -352,7 +389,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub ${AWS::StackName}-sync
-      CodeUri: dist/
+      CodeUri: src/
       Handler: handlers/sync.handler
       Policies:
         - DynamoDBCrudPolicy:
@@ -366,7 +403,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub ${AWS::StackName}-scheduler
-      CodeUri: dist/
+      CodeUri: src/
       Handler: handlers/scheduler.handler
       Policies:
         - DynamoDBCrudPolicy:
@@ -382,16 +419,84 @@ Resources:
             Queue: !GetAtt SchedulerQueue.Arn
             BatchSize: 10
 
+  # CloudWatch Log Group for API Gateway
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/apigateway/${AWS::StackName}-api
+      RetentionInDays: 14
+
+  # IAM Role for API Gateway to write to CloudWatch
+  ApiGatewayLoggingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+
+  # API Gateway Account configuration for logging
+  ApiGatewayAccount:
+    Type: AWS::ApiGateway::Account
+    Properties:
+      CloudWatchRoleArn: !GetAtt ApiGatewayLoggingRole.Arn
+
   # API Gateway
   ApiGateway:
     Type: AWS::Serverless::Api
     Properties:
       Name: !Sub ${AWS::StackName}-api
       StageName: !Ref Environment
+      # Enable execution logging
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          LoggingLevel: INFO
+          DataTraceEnabled: true
+          MetricsEnabled: true
+      # Enable access logging
+      AccessLogSetting:
+        DestinationArn: !GetAtt ApiGatewayLogGroup.Arn
+        Format: >
+          {
+            "requestId": "$context.requestId",
+            "requestTime": "$context.requestTime",
+            "httpMethod": "$context.httpMethod",
+            "resourcePath": "$context.resourcePath",
+            "status": "$context.status",
+            "error.message": "$context.error.message",
+            "error.messageString": "$context.error.messageString",
+            "authorizer.error": "$context.authorizer.error",
+            "authorizer.status": "$context.authorizer.status",
+            "integration.error": "$context.integration.error",
+            "integration.status": "$context.integration.status",
+            "responseLength": "$context.responseLength",
+            "responseTime": "$context.responseTime",
+            "sourceIp": "$context.identity.sourceIp",
+            "userAgent": "$context.identity.userAgent"
+          }
       Cors:
         AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
-        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Access-Control-Allow-Origin'"
         AllowOrigin: "'*'"
+        AllowCredentials: false
+        MaxAge: "'600'"
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        DEFAULT_5XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
@@ -406,6 +511,14 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt SyncScheduleRule.Arn
+
+  PostScheduleFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SchedulerFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt PostScheduleRule.Arn
 
 Outputs:
   ApiGatewayUrl:

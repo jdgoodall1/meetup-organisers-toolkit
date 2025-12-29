@@ -156,3 +156,19 @@ export async function retryWithBackoff<T>(
 export function deepClone<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj));
 }
+
+/**
+ * Parse JSON string safely
+ */
+export function parseJSON<T>(jsonString: string | null): T | null {
+  if (!jsonString) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(jsonString) as T;
+  } catch (error) {
+    console.error('Failed to parse JSON:', error);
+    return null;
+  }
+}

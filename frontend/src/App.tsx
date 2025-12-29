@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
+import LinkedInCallback from './components/LinkedInCallback';
 import './App.css';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -53,6 +54,10 @@ const AppContent: React.FC = () => {
             <Dashboard />
           </ProtectedRoute>
         } 
+      />
+      <Route 
+        path="/linkedin/callback" 
+        element={<LinkedInCallback />} 
       />
       <Route 
         path="/" 

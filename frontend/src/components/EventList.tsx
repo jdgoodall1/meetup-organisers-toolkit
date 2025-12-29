@@ -1,25 +1,53 @@
 import React, { useState, useEffect } from 'react';
 import { Event } from '../types';
-import { mockEvents } from '../services/mockData';
+import { apiService } from '../services/api';
 
 interface EventListProps {
   onEditEvent: (event: Event) => void;
+  onConfirmEvent?: (event: Event) => void;
+  refreshTrigger?: number;
 }
 
-const EventList: React.FC<EventListProps> = ({ onEditEvent }) => {
+const EventList: React.FC<EventListProps> = ({ onEditEvent, onConfirmEvent, refreshTrigger }) => {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadEvents = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const eventsData = await apiService.getEvents();
+      setEvents(eventsData as Event[]);
+    } catch (err) {
+      console.error('Failed to load events:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load events');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // Simulate API call
-    setTimeout(() => {
-      setEvents(mockEvents);
-      setLoading(false);
-    }, 500);
-  }, []);
+    loadEvents();
+  }, [refreshTrigger]);
 
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString('en-US', {
+  const handleConfirmEvent = async (event: Event) => {
+    try {
+      await apiService.confirmEvent(event.eventId);
+      if (onConfirmEvent) {
+        onConfirmEvent(event);
+      }
+      // Refresh the events list
+      await loadEvents();
+    } catch (err) {
+      console.error('Failed to confirm event:', err);
+      setError(err instanceof Error ? err.message : 'Failed to confirm event');
+    }
+  };
+
+  const formatDate = (date: Date | string) => {
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    return dateObj.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -43,6 +71,17 @@ const EventList: React.FC<EventListProps> = ({ onEditEvent }) => {
 
   if (loading) {
     return <div className="loading">Loading events...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="error-state">
+        <p>Error loading events: {error}</p>
+        <button onClick={loadEvents} className="btn-secondary">
+          Retry
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -92,7 +131,10 @@ const EventList: React.FC<EventListProps> = ({ onEditEvent }) => {
                   Edit
                 </button>
                 {event.platformStatus === 'pending_confirmation' && (
-                  <button className="btn-primary">
+                  <button 
+                    onClick={() => handleConfirmEvent(event)}
+                    className="btn-primary"
+                  >
                     Confirm & Publish
                   </button>
                 )}

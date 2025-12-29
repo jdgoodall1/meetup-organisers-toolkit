@@ -8,6 +8,14 @@ class ApiService {
       const session = await fetchAuthSession();
       const token = session.tokens?.idToken?.toString();
       
+      console.log('Auth session:', {
+        hasSession: !!session,
+        hasTokens: !!session.tokens,
+        hasIdToken: !!session.tokens?.idToken,
+        tokenLength: token?.length,
+        tokenPreview: token?.substring(0, 50) + '...'
+      });
+      
       return {
         'Content-Type': 'application/json',
         ...(token && { 'Authorization': `Bearer ${token}` }),
@@ -26,6 +34,9 @@ class ApiService {
   ): Promise<T> {
     const headers = await this.getAuthHeaders();
     
+    console.log('Making request to:', `${API_BASE_URL}${endpoint}`);
+    console.log('Request headers:', headers);
+    
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers: {
@@ -34,8 +45,12 @@ class ApiService {
       },
     });
 
+    console.log('Response status:', response.status);
+    console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
     if (!response.ok) {
       const errorText = await response.text();
+      console.log('Error response:', errorText);
       throw new Error(`API Error: ${response.status} - ${errorText}`);
     }
 
@@ -131,6 +146,49 @@ class ApiService {
     return this.makeRequest('/notifications/preferences', {
       method: 'PUT',
       body: JSON.stringify(preferences),
+    });
+  }
+
+  // LinkedIn endpoints
+  async getLinkedInProfile() {
+    return this.makeRequest('/linkedin/profile');
+  }
+
+  async getLinkedInOrganizations() {
+    return this.makeRequest('/linkedin/organizations');
+  }
+
+  async connectLinkedIn(authCode: string) {
+    return this.makeRequest('/linkedin/connect', {
+      method: 'POST',
+      body: JSON.stringify({ authCode }),
+    });
+  }
+
+  async disconnectLinkedIn() {
+    return this.makeRequest('/linkedin/disconnect', {
+      method: 'POST',
+    });
+  }
+
+  async createLinkedInEvent(eventData: any) {
+    return this.makeRequest('/linkedin/events', {
+      method: 'POST',
+      body: JSON.stringify(eventData),
+    });
+  }
+
+  async createLinkedInPost(postData: any) {
+    return this.makeRequest('/linkedin/posts', {
+      method: 'POST',
+      body: JSON.stringify(postData),
+    });
+  }
+
+  async scheduleLinkedInPost(postData: any) {
+    return this.makeRequest('/linkedin/posts/schedule', {
+      method: 'POST',
+      body: JSON.stringify(postData),
     });
   }
 

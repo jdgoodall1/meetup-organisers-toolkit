@@ -168,3 +168,16 @@ export async function invalidateSession(userId: string): Promise<void> {
   // For now, we'll just log the logout action
   console.log(`User ${userId} logged out`);
 }
+
+/**
+ * Gets user profile from API Gateway event (convenience function)
+ */
+export async function getUserFromEvent(event: APIGatewayProxyEvent): Promise<UserProfile | null> {
+  try {
+    const { profile } = await authenticateRequest(event);
+    return profile;
+  } catch (error) {
+    console.error('Authentication failed:', error);
+    return null;
+  }
+}

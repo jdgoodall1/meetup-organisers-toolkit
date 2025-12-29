@@ -12,6 +12,9 @@ import {
   EncryptedCredentials
 } from './types';
 import { generateId, parseDate, formatDateForStorage, isValidEmail, sanitizeString, isFutureDate } from './utils';
+import { dynamoDocClient } from './aws-clients';
+import { GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { config } from './config';
 
 // Validation errors
 export class ValidationError extends Error {
@@ -165,7 +168,107 @@ export class EventModel {
     }
   }
 
-  static create(data: Pick<Event, 'userId' | 'title' | 'description' | 'dateTime' | 'location'> & Partial<Omit<Event, 'eventId' | 'createdAt' | 'updatedAt' | 'lastSyncTime' | 'userId' | 'title' | 'description' | 'dateTime' | 'location'>>): Event {
+  static deserialize(data: Record<string, any>): Event {
+    return {
+      ...data,
+      dateTime: parseDate(data.dateTime),
+      lastSyncTime: parseDate(data.lastSyncTime),
+      createdAt: parseDate(data.createdAt),
+      updatedAt: parseDate(data.updatedAt)
+    } as Event;
+  }
+
+  static serialize(event: Event): Record<string, any> {
+    return {
+      ...event,
+      dateTime: formatDateForStorage(event.dateTime),
+      lastSyncTime: formatDateForStorage(event.lastSyncTime),
+      createdAt: formatDateForStorage(event.createdAt),
+      updatedAt: formatDateForStorage(event.updatedAt)
+    };
+  }
+
+  // Database operations
+  static async create(event: Event): Promise<Event> {
+    const serializedEvent = this.serialize(event);
+    
+    await dynamoDocClient.send(new PutCommand({
+      TableName: config.tables.events,
+      Item: {
+        PK: `USER#${event.userId}`,
+        SK: `EVENT#${event.eventId}`,
+        ...serializedEvent
+      }
+    }));
+
+    return event;
+  }
+
+  static async get(userId: string, eventId: string): Promise<Event | null> {
+    const result = await dynamoDocClient.send(new GetCommand({
+      TableName: config.tables.events,
+      Key: {
+        PK: `USER#${userId}`,
+        SK: `EVENT#${eventId}`
+      }
+    }));
+
+    if (!result.Item) {
+      return null;
+    }
+
+    const { PK, SK, ...eventData } = result.Item;
+    return this.deserialize(eventData);
+  }
+
+  static async update(event: Event): Promise<Event> {
+    event.updatedAt = new Date();
+    const serializedEvent = this.serialize(event);
+    
+    await dynamoDocClient.send(new PutCommand({
+      TableName: config.tables.events,
+      Item: {
+        PK: `USER#${event.userId}`,
+        SK: `EVENT#${event.eventId}`,
+        ...serializedEvent
+      }
+    }));
+
+    return event;
+  }
+
+  static async delete(userId: string, eventId: string): Promise<void> {
+    await dynamoDocClient.send(new DeleteCommand({
+      TableName: config.tables.events,
+      Key: {
+        PK: `USER#${userId}`,
+        SK: `EVENT#${eventId}`
+      }
+    }));
+  }
+
+  static async getByUserId(userId: string): Promise<Event[]> {
+    const result = await dynamoDocClient.send(new QueryCommand({
+      TableName: config.tables.events,
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+      ExpressionAttributeValues: {
+        ':pk': `USER#${userId}`,
+        ':sk': 'EVENT#'
+      }
+    }));
+
+    if (!result.Items) {
+      return [];
+    }
+
+    return result.Items.map(item => {
+      const { PK, SK, ...eventData } = item;
+      return this.deserialize(eventData);
+    });
+  }
+
+  // Factory method for creating new events
+  static createNew(data: Pick<Event, 'userId' | 'title' | 'description' | 'dateTime' | 'location'> & Partial<Omit<Event, 'eventId' | 'createdAt' | 'updatedAt' | 'lastSyncTime' | 'userId' | 'title' | 'description' | 'dateTime' | 'location'>>): Event {
     const now = new Date();
     const event: Event = {
       eventId: generateId(),
@@ -180,39 +283,19 @@ export class EventModel {
       linkedinEventStatus: data.linkedinEventStatus,
       platformStatus: data.platformStatus || 'pending_confirmation',
       source: data.source || 'platform',
-      requiresConfirmation: data.requiresConfirmation || false,
-      publishToMeetup: data.publishToMeetup || true,
-      publishToLinkedIn: data.publishToLinkedIn || false,
-      socialPostsScheduled: data.socialPostsScheduled || false,
-      messagesScheduled: data.messagesScheduled || false,
+      requiresConfirmation: data.requiresConfirmation ?? false,
+      publishToMeetup: data.publishToMeetup ?? true,
+      publishToLinkedIn: data.publishToLinkedIn ?? false,
+      socialPostsScheduled: data.socialPostsScheduled ?? false,
+      messagesScheduled: data.messagesScheduled ?? false,
       lastSyncTime: now,
-      externallyModified: data.externallyModified || false,
+      externallyModified: data.externallyModified ?? false,
       createdAt: now,
       updatedAt: now
     };
 
     this.validate(event);
     return event;
-  }
-
-  static serialize(event: Event): Record<string, any> {
-    return {
-      ...event,
-      dateTime: formatDateForStorage(event.dateTime),
-      lastSyncTime: formatDateForStorage(event.lastSyncTime),
-      createdAt: formatDateForStorage(event.createdAt),
-      updatedAt: formatDateForStorage(event.updatedAt)
-    };
-  }
-
-  static deserialize(data: Record<string, any>): Event {
-    return {
-      ...data,
-      dateTime: parseDate(data.dateTime),
-      lastSyncTime: parseDate(data.lastSyncTime),
-      createdAt: parseDate(data.createdAt),
-      updatedAt: parseDate(data.updatedAt)
-    } as Event;
   }
 }
 
