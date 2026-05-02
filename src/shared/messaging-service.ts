@@ -89,8 +89,8 @@ export class MessagingService {
    * Send a scheduled message via Meetup.com API
    */
   static async sendMessage(request: SendMessageRequest): Promise<SendMessageResult> {
+    const { message, meetupClient, groupId } = request;
     try {
-      const { message, meetupClient, groupId } = request;
 
       // Get recipient count before sending
       const recipientCount = await this.getRecipientCount(
@@ -501,8 +501,8 @@ export class MessagingService {
         SK: `MESSAGE#${messageId}`
       },
       UpdateExpression: `SET ${updateExpression.join(', ')}`,
-      ExpressionAttributeNames,
-      ExpressionAttributeValues
+      ExpressionAttributeNames: expressionAttributeNames,
+      ExpressionAttributeValues: expressionAttributeValues
     }));
   }
 

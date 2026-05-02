@@ -319,6 +319,12 @@ Resources:
             RestApiId: !Ref ApiGateway
             Path: /events
             Method: get
+        GetEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /events/{id}
+            Method: get
         UpdateEvent:
           Type: Api
           Properties:
@@ -331,6 +337,18 @@ Resources:
             RestApiId: !Ref ApiGateway
             Path: /events/{id}
             Method: delete
+        ConfirmEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /events/{id}/confirm
+            Method: post
+        RejectEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /events/{id}/reject
+            Method: post
 
   SocialFunction:
     Type: AWS::Serverless::Function
@@ -372,8 +390,35 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref MessagesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EventsTable
         - SQSSendMessagePolicy:
             QueueName: !GetAtt SchedulerQueue.QueueName
+      Events:
+        ScheduleMessage:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /messages/schedule
+            Method: post
+        GetMessages:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /messages
+            Method: get
+        UpdateTemplates:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /messages/templates
+            Method: put
+        DeleteMessage:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /messages/{id}
+            Method: delete
 
   NotificationFunction:
     Type: AWS::Serverless::Function
@@ -384,6 +429,33 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref NotificationsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+      Events:
+        GetNotifications:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /notifications
+            Method: get
+        UpdatePreferences:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /notifications/preferences
+            Method: put
+        GetPreferences:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /notifications/preferences
+            Method: get
+        MarkRead:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /notifications/{id}/read
+            Method: put
 
   SyncFunction:
     Type: AWS::Serverless::Function
@@ -398,6 +470,27 @@ Resources:
             TableName: !Ref SyncRecordsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref SyncConflictsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+      Events:
+        TriggerSync:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /events/sync
+            Method: post
+        GetSyncStatus:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /sync/status
+            Method: get
+        ResolveConflict:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /sync/resolve-conflict
+            Method: post
 
   SchedulerFunction:
     Type: AWS::Serverless::Function

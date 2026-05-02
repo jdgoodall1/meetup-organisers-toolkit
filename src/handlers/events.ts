@@ -11,38 +11,16 @@ import { getUserFromEvent } from '../shared/auth';
 export const handler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
-  // Always add CORS headers to every response
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-    'Access-Control-Max-Age': '86400'
-  };
-
   try {
-    // Handle preflight OPTIONS request
-    if (event.httpMethod === 'OPTIONS') {
-      return {
-        statusCode: 200,
-        headers: corsHeaders,
-        body: ''
-      };
-    }
-
-    // Validate configuration on cold start
     validateConfig();
 
-    const { httpMethod, pathParameters, body } = event;
-    const eventId = pathParameters?.eventId;
+    const { httpMethod, resource, pathParameters, body } = event;
+    const eventId = pathParameters?.id;
 
     // Get user from JWT token
     const user = await getUserFromEvent(event);
     if (!user) {
-      return {
-        statusCode: 401,
-        headers: corsHeaders,
-        body: JSON.stringify({ error: 'Unauthorized' })
-      };
+      return createResponse(401, { error: 'Unauthorized' });
     }
 
     // Initialize services
@@ -52,89 +30,102 @@ export const handler = async (
     }
     const eventService = new EventService(meetupClient);
 
-    switch (httpMethod) {
-      case 'GET':
-        if (eventId) {
-          // Get single event
-          const eventRecord = await EventModel.get(user.userId, eventId);
-          if (!eventRecord) {
-            return {
-              statusCode: 404,
-              headers: corsHeaders,
-              body: JSON.stringify({ error: 'Event not found' })
-            };
-          }
-          return {
-            statusCode: 200,
-            headers: corsHeaders,
-            body: JSON.stringify(eventRecord)
-          };
-        } else {
-          // Get all events for user
-          const events = await EventModel.getByUserId(user.userId);
-          return {
-            statusCode: 200,
-            headers: corsHeaders,
-            body: JSON.stringify(events)
-          };
-        }
+    // Route based on httpMethod + resource pattern
+    switch (`${httpMethod} ${resource}`) {
+      case 'GET /events': {
+        const events = await EventModel.getByUserId(user.userId);
+        return createResponse(200, { events });
+      }
 
-      case 'POST':
-        if (pathParameters?.action === 'sync') {
-          // Trigger manual synchronization
-          // TODO: Implement sync functionality
-          return createResponse(200, { message: 'Sync triggered' });
-        } else if (eventId && pathParameters?.action === 'confirm') {
-          // Confirm draft event
-          const eventRecord = await EventModel.get(user.userId, eventId);
-          if (!eventRecord) {
-            return createResponse(404, { error: 'Event not found' });
-          }
-
-          const requestData = parseJSON<{ groupId?: string }>(body) || {};
-          const result = await eventService.confirmEvent(eventRecord, requestData.groupId);
-          await EventModel.update(result.event);
-
-          return createResponse(200, {
-            event: result.event,
-            meetupEvent: result.meetupEvent,
-            errors: result.errors
-          });
-        } else {
-          // Create new event
-          const requestData = parseJSON<CreateEventRequest>(body);
-          if (!requestData) {
-            return createResponse(400, { error: 'Invalid request body' });
-          }
-
-          // Validate required fields
-          if (!requestData.title || !requestData.description || !requestData.dateTime || !requestData.location) {
-            return createResponse(400, { error: 'Missing required fields' });
-          }
-
-          const result = await eventService.createEvent(
-            user.userId,
-            user,
-            {
-              ...requestData,
-              dateTime: new Date(requestData.dateTime),
-              groupId: requestData.groupId // Pass groupId from request if provided
-            }
-          );
-
-          // Save event to database
-          await EventModel.create(result.event);
-
-          return createResponse(201, {
-            event: result.event,
-            meetupEvent: result.meetupEvent,
-            errors: result.errors
-          });
-        }
-
-      case 'PUT':
+      case 'GET /events/{id}': {
         if (!eventId) {
-          return createResponse(400, { error: 'Event ID required' });
+          return createResponse(400, { error: 'Event ID is required' });
+        }
+        const eventRecord = await EventModel.get(user.userId, eventId);
+        if (!eventRecord) {
+          return createResponse(404, { error: 'Event not found' });
+        }
+        return createResponse(200, { event: eventRecord });
+      }
+
+      case 'POST /events': {
+        const requestData = parseJSON<CreateEventRequest>(body);
+        if (!requestData) {
+          return createResponse(400, { error: 'Invalid request body' });
+        }
+
+        if (!requestData.title || !requestData.description || !requestData.dateTime || !requestData.location) {
+          return createResponse(400, { error: 'Missing required fields: title, description, dateTime, and location are required' });
+        }
+
+        const result = await eventService.createEvent(
+          user.userId,
+          user,
+          {
+            ...requestData,
+            dateTime: new Date(requestData.dateTime),
+            groupId: requestData.groupId
+          }
+        );
+
+        await EventModel.create(result.event);
+
+        return createResponse(201, {
+          event: result.event,
+          meetupEvent: result.meetupEvent,
+          errors: result.errors
+        });
+      }
+
+      case 'POST /events/{id}/confirm': {
+        if (!eventId) {
+          return createResponse(400, { error: 'Event ID is required' });
+        }
+        const eventRecord = await EventModel.get(user.userId, eventId);
+        if (!eventRecord) {
+          return createResponse(404, { error: 'Event not found' });
+        }
+
+        if (eventRecord.platformStatus !== 'pending_confirmation') {
+          return createResponse(400, { error: 'Event is not in pending confirmation status' });
+        }
+
+        const requestData = parseJSON<{ groupId?: string }>(body) || {};
+        const result = await eventService.confirmEvent(eventRecord, requestData.groupId);
+        await EventModel.update(result.event);
+
+        return createResponse(200, {
+          event: result.event,
+          meetupEvent: result.meetupEvent,
+          errors: result.errors
+        });
+      }
+
+      case 'POST /events/{id}/reject': {
+        if (!eventId) {
+          return createResponse(400, { error: 'Event ID is required' });
+        }
+        const eventToReject = await EventModel.get(user.userId, eventId);
+        if (!eventToReject) {
+          return createResponse(404, { error: 'Event not found' });
+        }
+
+        if (eventToReject.platformStatus !== 'pending_confirmation') {
+          return createResponse(400, { error: 'Event is not in pending confirmation status' });
+        }
+
+        const rejectResult = await eventService.rejectEvent(eventToReject);
+        await EventModel.update(rejectResult.event);
+
+        return createResponse(200, {
+          event: rejectResult.event,
+          errors: rejectResult.errors
+        });
+      }
+
+      case 'PUT /events/{id}': {
+        if (!eventId) {
+          return createResponse(400, { error: 'Event ID is required' });
         }
 
         const eventRecord = await EventModel.get(user.userId, eventId);
@@ -163,10 +154,11 @@ export const handler = async (
           meetupEvent: updateResult.meetupEvent,
           errors: updateResult.errors
         });
+      }
 
-      case 'DELETE':
+      case 'DELETE /events/{id}': {
         if (!eventId) {
-          return createResponse(400, { error: 'Event ID required' });
+          return createResponse(400, { error: 'Event ID is required' });
         }
 
         const eventToCancel = await EventModel.get(user.userId, eventId);
@@ -174,12 +166,7 @@ export const handler = async (
           return createResponse(404, { error: 'Event not found' });
         }
 
-        const cancelResult = await eventService.cancelEvent(
-          eventToCancel,
-          // For now, we'll handle groupId in the service or get it from the event
-          undefined
-        );
-
+        const cancelResult = await eventService.cancelEvent(eventToCancel, undefined);
         await EventModel.update(cancelResult.event);
 
         return createResponse(200, {
@@ -187,20 +174,13 @@ export const handler = async (
           meetupEvent: cancelResult.meetupEvent,
           errors: cancelResult.errors
         });
+      }
 
       default:
         return createResponse(405, { error: 'Method not allowed' });
     }
   } catch (error) {
     console.error('Error in events handler:', error);
-    return {
-      statusCode: 500,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-      },
-      body: JSON.stringify({ error: 'Internal server error' })
-    };
+    return handleError(error);
   }
 };

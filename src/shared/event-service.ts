@@ -4,6 +4,9 @@ import { Event, UserProfile } from './types';
 import { EventModel } from './models';
 import { MeetupClient, MeetupEvent, MeetupApiError } from './meetup-client';
 import { LinkedInClient, LinkedInEvent, LinkedInApiError } from './linkedin-client';
+import { SocialMediaService } from './social-media-service';
+import { MessagingService } from './messaging-service';
+import { NotificationService } from './notification-service';
 import { generateId } from './utils';
 
 export interface CreateEventRequest {
@@ -315,6 +318,91 @@ export class EventService {
           errors.push(`Failed to cancel LinkedIn event: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       }
+    }
+
+    return {
+      event,
+      meetupEvent,
+      linkedinEvent,
+      errors
+    };
+  }
+
+  /**
+   * Reject a draft event (cancel it and clean up associated posts/messages)
+   * Only works on events with platformStatus === 'pending_confirmation'
+   */
+  async rejectEvent(
+    event: Event,
+    groupId?: string
+  ): Promise<{ event: Event; meetupEvent?: MeetupEvent; linkedinEvent?: LinkedInEvent; errors: string[] }> {
+    const errors: string[] = [];
+    let meetupEvent: MeetupEvent | undefined;
+    let linkedinEvent: LinkedInEvent | undefined;
+
+    // Update local event status
+    event.platformStatus = 'cancelled';
+    event.updatedAt = new Date();
+
+    // Cancel draft on Meetup.com if it exists
+    if (event.meetupEventId && this.meetupClient && groupId) {
+      try {
+        meetupEvent = await this.meetupClient.cancelEvent(groupId, event.meetupEventId);
+        event.meetupEventStatus = 'cancelled';
+      } catch (error) {
+        if (error instanceof MeetupApiError) {
+          errors.push(`Failed to cancel Meetup.com draft event: ${error.message}`);
+        } else {
+          errors.push(`Failed to cancel Meetup.com draft event: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+    } else if (event.meetupEventId) {
+      // Mark as cancelled locally even if we can't reach Meetup
+      event.meetupEventStatus = 'cancelled';
+    }
+
+    // Cancel LinkedIn draft if it exists
+    if (event.linkedinEventId && this.linkedinClient) {
+      try {
+        linkedinEvent = await this.linkedinClient.cancelEvent(event.linkedinEventId);
+        event.linkedinEventStatus = 'cancelled';
+      } catch (error) {
+        if (error instanceof LinkedInApiError) {
+          errors.push(`Failed to cancel LinkedIn draft event: ${error.message}`);
+        } else {
+          errors.push(`Failed to cancel LinkedIn draft event: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+    } else if (event.linkedinEventStatus === 'draft') {
+      event.linkedinEventStatus = 'cancelled';
+    }
+
+    // Cancel all scheduled posts for this event
+    try {
+      await SocialMediaService.cancelPostsForEvent(event.eventId);
+    } catch (error) {
+      errors.push(`Failed to cancel scheduled posts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    // Cancel all scheduled messages for this event
+    try {
+      await MessagingService.cancelMessagesForEvent(event.eventId);
+    } catch (error) {
+      errors.push(`Failed to cancel scheduled messages: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    // Send rejection notification
+    try {
+      await NotificationService.sendNotification({
+        userId: event.userId,
+        type: 'info',
+        title: 'Draft Event Rejected',
+        message: `The draft event "${event.title}" has been rejected. All associated scheduled posts and messages have been cancelled.`,
+        relatedEntityId: event.eventId,
+        relatedEntityType: 'event'
+      });
+    } catch (error) {
+      errors.push(`Failed to send rejection notification: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
     return {

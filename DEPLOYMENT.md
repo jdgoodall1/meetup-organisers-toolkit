@@ -1,141 +1,152 @@
 # LogiMeet AWS Deployment Guide
 
-This guide will help you deploy LogiMeet to AWS and get it running in the cloud.
-
 ## Prerequisites
 
 1. **AWS CLI** installed and configured with appropriate permissions
-2. **SAM CLI** installed (`pip install aws-sam-cli` or via package manager)
-3. **Node.js 18+** for building the frontend
+2. **SAM CLI** installed (`brew install aws-sam-cli` or `pip install aws-sam-cli`)
+3. **Node.js 22+** (matches the Lambda runtime)
 
-## Step 1: Prepare for Deployment
+## Backend Deployment (SAM)
 
-### 1.1 Build the Backend
+### Build and Deploy
+
 ```bash
-# Install dependencies and build
+# Install backend dependencies
 npm install
-npm run build
-```
 
-## Step 2: Deploy Backend Infrastructure
-
-### 2.1 Deploy with SAM
-```bash
-# Deploy the SAM template
+# Build the SAM application
 sam build
+
+# First-time deploy (interactive prompts)
 sam deploy --guided
+
+# Subsequent deploys
+sam deploy
 ```
 
-During the guided deployment, you'll be prompted for:
-- **Stack name**: `logimeet-dev` (or your preference)
-- **AWS Region**: Choose your preferred region (e.g., `us-east-1`)
-- **Environment**: `dev`
+During guided deployment you'll be prompted for:
+- **Stack name**: e.g. `logimeet` or `logimeet-dev`
+- **AWS Region**: e.g. `us-east-1`
+- **Environment**: `dev`, `staging`, or `prod`
 
-### 2.2 Note the Outputs
-After deployment, SAM will output important values:
-- **ApiGatewayUrl**: Your API endpoint
-- **UserPoolId**: Cognito User Pool ID
-- **UserPoolClientId**: Cognito User Pool Client ID
+### Capture Outputs
 
-## Step 3: Deploy Frontend
+After deployment, note these values from the stack outputs:
+- `ApiGatewayUrl` — your REST API endpoint
+- `UserPoolId` — Cognito User Pool ID
+- `UserPoolClientId` — Cognito Client ID
 
-### 3.1 Configure Frontend Environment
-Create `frontend/.env.production`:
+### What Gets Provisioned
+
+The SAM template deploys:
+- **7 Lambda functions** (auth, events, social, messaging, notifications, sync, scheduler)
+- **API Gateway** with Cognito authorizer and CORS
+- **Cognito User Pool** with email-based auth
+- **7 DynamoDB tables** (events, users, scheduled-posts, messages, notifications, sync-records, sync-conflicts)
+- **SQS queue** for scheduled task processing
+- **EventBridge rules** for periodic sync (15 min) and post scheduling (5 min)
+- **CloudWatch** log groups with API Gateway access logging
+
+## Frontend Deployment (Amplify)
+
+### 1. Update Environment Variables
+
+Edit `frontend/.env.production` with your SAM output values:
+
 ```bash
-# Replace with your actual values from SAM deployment
 VITE_USER_POOL_ID=us-east-1_XXXXXXXXX
 VITE_USER_POOL_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxx
-VITE_API_ENDPOINT=https://your-api-id.execute-api.region.amazonaws.com/dev
+VITE_API_ENDPOINT=https://your-api-id.execute-api.us-east-1.amazonaws.com/dev
 VITE_AWS_REGION=us-east-1
 ```
 
-### 3.2 Deploy to AWS Amplify
+### 2. Connect in Amplify Console
 
-#### Option A: Using AWS Console (Recommended)
-1. Go to AWS Console → AWS Amplify
-2. Click "New app" → "Host web app"
-3. Connect your GitHub repository
-4. Choose the branch (usually `main`)
-5. Build settings should auto-detect React/Vite
-6. Add environment variables from your `.env.production`
-7. Deploy!
+1. Go to **AWS Amplify** → **Create new app** → **Host web app**
+2. Connect your Git repository and select the branch
+3. Amplify auto-detects the `amplify.yml` build spec at the repo root
+4. Verify build settings: installs from `frontend/`, builds with `tsc && vite build`, serves from `frontend/dist`
+5. Add the environment variables listed above
+6. Deploy
 
-#### Option B: Using Amplify CLI
+### Build Configuration
+
+The repo includes these Amplify config files:
+- **`amplify.yml`** — Build spec (preBuild: `npm ci`, build: `npm run build`, artifacts from `frontend/dist`)
+- **`frontend/customHttp.yml`** — Security headers (HSTS, X-Frame-Options, X-Content-Type-Options, CSP)
+- **`frontend/public/_redirects`** — SPA rewrite rule for React Router
+
+### Custom Domain (Optional)
+
+In the Amplify console under **Domain management**, you can add a custom domain with automatic SSL certificate provisioning.
+
+## Verification
+
+After both deployments:
+
+1. Visit your Amplify URL
+2. Create an account and sign in
+3. Verify the dashboard loads
+4. Check browser network tab — API calls should hit your API Gateway endpoint
+5. Check CloudWatch logs for any Lambda errors
+
+## API Endpoints
+
+| Method | Path | Handler | Description |
+|--------|------|---------|-------------|
+| GET | /auth/profile | auth | Get user profile |
+| PUT | /auth/profile | auth | Update profile |
+| POST | /auth/logout | auth | Logout |
+| GET | /events | events | List events |
+| GET | /events/{id} | events | Get event |
+| POST | /events | events | Create event |
+| PUT | /events/{id} | events | Update event |
+| DELETE | /events/{id} | events | Cancel event |
+| POST | /events/{id}/confirm | events | Confirm draft |
+| POST | /events/{id}/reject | events | Reject draft |
+| POST | /events/sync | sync | Trigger sync |
+| GET | /sync/status | sync | Sync status |
+| POST | /sync/resolve-conflict | sync | Resolve conflict |
+| POST | /social/schedule | social | Schedule posts |
+| GET | /social/posts | social | List posts |
+| DELETE | /social/posts/{id} | social | Cancel post |
+| POST | /messages/schedule | messaging | Schedule message |
+| GET | /messages | messaging | List messages |
+| PUT | /messages/templates | messaging | Update templates |
+| DELETE | /messages/{id} | messaging | Cancel message |
+| GET | /notifications | notifications | List notifications |
+| GET | /notifications/preferences | notifications | Get preferences |
+| PUT | /notifications/preferences | notifications | Update preferences |
+| PUT | /notifications/{id}/read | notifications | Mark as read |
+
+## Updating
+
 ```bash
-# Install Amplify CLI
-npm install -g @aws-amplify/cli
+# Backend: rebuild and redeploy
+sam build && sam deploy
 
-# Initialize Amplify in frontend directory
-cd frontend
-amplify init
-
-# Add hosting
-amplify add hosting
-# Choose "Amazon CloudFront and S3"
-
-# Deploy
-amplify publish
+# Frontend: push to Git — Amplify auto-deploys on push
+git push origin main
 ```
 
-## Step 4: Test Your Deployment
+## Teardown
 
-1. **Visit your Amplify URL**
-2. **Create a new account** with email/password
-3. **Sign in** with your credentials
-4. **Check the dashboard** loads after authentication
-5. **Verify API calls** work (check browser network tab)
+```bash
+# Remove backend stack (all resources)
+sam delete --stack-name logimeet
 
-## Step 5: What You'll Have
+# Frontend: delete the app in the Amplify console
+```
 
-After successful deployment:
-- ✅ **Live authentication system** with email/password
-- ✅ **Protected dashboard** requiring login
-- ✅ **Real AWS backend** with DynamoDB and Lambda
-- ✅ **API endpoints** ready for event management
-- ✅ **Scalable infrastructure** that can handle real users
+## Cost Estimate (Development)
 
-## Troubleshooting
-
-### Common Issues
-
-1. **Authentication Errors**
-   - Verify User Pool and Client IDs are correct
-   - Check that environment variables are set properly
-
-2. **CORS Errors**
-   - API Gateway CORS is configured in the SAM template
-   - If issues persist, check the API Gateway console
-
-3. **Build Failures**
-   - Ensure all environment variables are set
-   - Check that Node.js version is 18+
-
-### Getting Help
-
-If you run into issues:
-1. Check CloudWatch logs for Lambda functions
-2. Check browser console for frontend errors
-3. Verify all environment variables are set correctly
-
-## Next Steps
-
-Once deployed, you can:
-1. **Continue with Task 6** (Meetup.com integration)
-2. **Add real event management features**
-3. **Invite others to test the authentication**
-4. **Monitor usage in AWS CloudWatch**
-
-## Cost Estimation
-
-For development/testing with light usage:
-- **Cognito**: ~$0 (free tier covers 50,000 MAUs)
-- **Lambda**: ~$0-5/month (free tier covers 1M requests)
-- **DynamoDB**: ~$0-2/month (free tier covers 25GB)
-- **API Gateway**: ~$0-3/month (free tier covers 1M requests)
-- **Amplify Hosting**: ~$0-1/month (free tier covers 15GB)
-
-**Total estimated cost: $0-10/month for development**
-
----
-
-Ready to deploy? The process is now much simpler without OAuth setup!
+| Service | Estimated Monthly Cost |
+|---------|----------------------|
+| Cognito | ~$0 (free tier: 50K MAUs) |
+| Lambda | ~$0-5 (free tier: 1M requests) |
+| DynamoDB | ~$0-2 (free tier: 25GB) |
+| API Gateway | ~$0-3 (free tier: 1M requests) |
+| Amplify Hosting | ~$0-1 (free tier: 15GB served) |
+| SQS | ~$0 (free tier: 1M requests) |
+| EventBridge | ~$0 (free tier: 14M events) |
+| **Total** | **$0-10/month** |

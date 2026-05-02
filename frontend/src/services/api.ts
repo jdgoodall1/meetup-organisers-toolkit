@@ -130,10 +130,46 @@ class ApiService {
     });
   }
 
-  async updateMessageTemplates(templates: any) {
+  async cancelMessage(messageId: string) {
+    return this.makeRequest(`/messages/${messageId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async retryMessage(messageId: string) {
+    return this.makeRequest(`/messages/${messageId}/retry`, {
+      method: 'POST',
+    });
+  }
+
+  // Message template endpoints
+  async getMessageTemplates() {
+    return this.makeRequest('/messages/templates');
+  }
+
+  async createMessageTemplate(template: any) {
     return this.makeRequest('/messages/templates', {
+      method: 'POST',
+      body: JSON.stringify(template),
+    });
+  }
+
+  async updateMessageTemplate(templateId: string, template: any) {
+    return this.makeRequest(`/messages/templates/${templateId}`, {
       method: 'PUT',
-      body: JSON.stringify(templates),
+      body: JSON.stringify(template),
+    });
+  }
+
+  async deleteMessageTemplate(templateId: string) {
+    return this.makeRequest(`/messages/templates/${templateId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async setDefaultMessageTemplate(templateId: string) {
+    return this.makeRequest(`/messages/templates/${templateId}/default`, {
+      method: 'PUT',
     });
   }
 
@@ -142,10 +178,26 @@ class ApiService {
     return this.makeRequest('/notifications');
   }
 
+  async getNotificationPreferences() {
+    return this.makeRequest('/notifications/preferences');
+  }
+
   async updateNotificationPreferences(preferences: any) {
     return this.makeRequest('/notifications/preferences', {
       method: 'PUT',
       body: JSON.stringify(preferences),
+    });
+  }
+
+  async markNotificationAsRead(notificationId: string) {
+    return this.makeRequest(`/notifications/${notificationId}/read`, {
+      method: 'PUT',
+    });
+  }
+
+  async markAllNotificationsAsRead() {
+    return this.makeRequest('/notifications/read-all', {
+      method: 'PUT',
     });
   }
 
