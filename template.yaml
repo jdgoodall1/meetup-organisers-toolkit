@@ -555,24 +555,7 @@ Resources:
       # Enable access logging
       AccessLogSetting:
         DestinationArn: !GetAtt ApiGatewayLogGroup.Arn
-        Format: >
-          {
-            "requestId": "$context.requestId",
-            "requestTime": "$context.requestTime",
-            "httpMethod": "$context.httpMethod",
-            "resourcePath": "$context.resourcePath",
-            "status": "$context.status",
-            "error.message": "$context.error.message",
-            "error.messageString": "$context.error.messageString",
-            "authorizer.error": "$context.authorizer.error",
-            "authorizer.status": "$context.authorizer.status",
-            "integration.error": "$context.integration.error",
-            "integration.status": "$context.integration.status",
-            "responseLength": "$context.responseLength",
-            "responseTime": "$context.responseTime",
-            "sourceIp": "$context.identity.sourceIp",
-            "userAgent": "$context.identity.userAgent"
-          }
+        Format: '{"requestId":"$context.requestId","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath","status":"$context.status","error.message":"$context.error.message","error.messageString":"$context.error.messageString","authorizer.error":"$context.authorizer.error","authorizer.status":"$context.authorizer.status","integration.error":"$context.integration.error","integration.status":"$context.integration.status","responseLength":"$context.responseLength","responseTime":"$context.responseTime","sourceIp":"$context.identity.sourceIp","userAgent":"$context.identity.userAgent"}'
       Cors:
         AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
         AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Access-Control-Allow-Origin'"
