@@ -313,8 +313,6 @@ export class SocialMediaService {
     await dynamoDocClient.send(new PutCommand({
       TableName: config.tables.scheduledPosts,
       Item: {
-        PK: `EVENT#${post.eventId}`,
-        SK: `POST#${post.postId}`,
         organizationId, // Store organization ID for later use
         ...serializedPost
       }
@@ -388,9 +386,6 @@ export class SocialMediaService {
       return [];
     }
 
-    return result.Items.map(item => {
-      const { PK, SK, ...postData } = item;
-      return ScheduledPostModel.deserialize(postData);
-    });
+    return result.Items.map(item => ScheduledPostModel.deserialize(item));
   }
 }

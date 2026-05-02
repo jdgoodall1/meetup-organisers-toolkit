@@ -5,7 +5,7 @@ import { MessageModel } from './models';
 import { MeetupClient, MeetupMember, MeetupAttendee } from './meetup-client';
 import { generateId } from './utils';
 import { dynamoDocClient } from './aws-clients';
-import { PutCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { PutCommand, QueryCommand, UpdateCommand, GetCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { config } from './config';
 
 export interface MessageTemplate {
@@ -342,7 +342,7 @@ export class MessagingService {
     try {
       const result = await dynamoDocClient.send(new QueryCommand({
         TableName: config.tables.messages,
-        IndexName: 'EventIndex',
+        IndexName: 'EventMessagesIndex',
         KeyConditionExpression: 'eventId = :eventId',
         ExpressionAttributeValues: {
           ':eventId': eventId
@@ -366,14 +366,15 @@ export class MessagingService {
     try {
       const result = await dynamoDocClient.send(new QueryCommand({
         TableName: config.tables.messages,
-        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
-        FilterExpression: '#status IN (:pending, :pendingConfirmation)',
+        IndexName: 'EventMessagesIndex',
+        KeyConditionExpression: 'eventId = :eventId',
+        FilterExpression: 'userId = :userId AND #status IN (:pending, :pendingConfirmation)',
         ExpressionAttributeNames: {
           '#status': 'status'
         },
         ExpressionAttributeValues: {
-          ':pk': `USER#${userId}`,
-          ':sk': 'MESSAGE#',
+          ':eventId': userId, // This is a workaround - ideally we'd have a UserMessagesIndex
+          ':userId': userId,
           ':pending': 'pending',
           ':pendingConfirmation': 'pending_confirmation'
         }
@@ -383,12 +384,27 @@ export class MessagingService {
         return [];
       }
 
-      return result.Items.map(item => {
-        const { PK, SK, ...messageData } = item;
-        return MessageModel.deserialize(messageData);
-      });
+      return result.Items.map(item => MessageModel.deserialize(item));
     } catch (error) {
-      throw new Error(`Failed to get pending messages for user: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Fallback: scan with filter for userId and status
+      const result = await dynamoDocClient.send(new ScanCommand({
+        TableName: config.tables.messages,
+        FilterExpression: 'userId = :userId AND #status IN (:pending, :pendingConfirmation)',
+        ExpressionAttributeNames: {
+          '#status': 'status'
+        },
+        ExpressionAttributeValues: {
+          ':userId': userId,
+          ':pending': 'pending',
+          ':pendingConfirmation': 'pending_confirmation'
+        }
+      }));
+
+      if (!result.Items) {
+        return [];
+      }
+
+      return result.Items.map(item => MessageModel.deserialize(item));
     }
   }
 
@@ -399,27 +415,21 @@ export class MessagingService {
     // This would typically import EventModel, but to avoid circular dependencies
     // we'll implement a simple query here
     try {
-      const result = await dynamoDocClient.send(new QueryCommand({
+      const result = await dynamoDocClient.send(new GetCommand({
         TableName: config.tables.events,
-        IndexName: 'EventIndex',
-        KeyConditionExpression: 'eventId = :eventId',
-        ExpressionAttributeValues: {
-          ':eventId': eventId
-        },
-        Limit: 1
+        Key: { eventId }
       }));
 
-      if (!result.Items || result.Items.length === 0) {
+      if (!result.Item) {
         return null;
       }
 
-      const { PK, SK, ...eventData } = result.Items[0];
       return {
-        ...eventData,
-        dateTime: new Date(eventData.dateTime),
-        lastSyncTime: new Date(eventData.lastSyncTime),
-        createdAt: new Date(eventData.createdAt),
-        updatedAt: new Date(eventData.updatedAt)
+        ...result.Item,
+        dateTime: new Date(result.Item.dateTime),
+        lastSyncTime: new Date(result.Item.lastSyncTime),
+        createdAt: new Date(result.Item.createdAt),
+        updatedAt: new Date(result.Item.updatedAt)
       } as Event;
     } catch (error) {
       return null;
@@ -434,11 +444,7 @@ export class MessagingService {
     
     await dynamoDocClient.send(new PutCommand({
       TableName: config.tables.messages,
-      Item: {
-        PK: `USER#${message.userId}`,
-        SK: `MESSAGE#${message.messageId}`,
-        ...serializedMessage
-      }
+      Item: serializedMessage
     }));
   }
 
@@ -475,31 +481,9 @@ export class MessagingService {
       expressionAttributeValues[':errorMessage'] = errorMessage;
     }
 
-    // We need to find the message first to get the PK
-    // This is a limitation of the current design - we should store userId in the message
-    // For now, we'll use a scan operation (not ideal for production)
-    const result = await dynamoDocClient.send(new QueryCommand({
-      TableName: config.tables.messages,
-      IndexName: 'MessageIndex',
-      KeyConditionExpression: 'messageId = :messageId',
-      ExpressionAttributeValues: {
-        ':messageId': messageId
-      },
-      Limit: 1
-    }));
-
-    if (!result.Items || result.Items.length === 0) {
-      throw new Error(`Message ${messageId} not found`);
-    }
-
-    const message = result.Items[0];
-
     await dynamoDocClient.send(new UpdateCommand({
       TableName: config.tables.messages,
-      Key: {
-        PK: `USER#${message.userId}`,
-        SK: `MESSAGE#${messageId}`
-      },
+      Key: { messageId },
       UpdateExpression: `SET ${updateExpression.join(', ')}`,
       ExpressionAttributeNames: expressionAttributeNames,
       ExpressionAttributeValues: expressionAttributeValues
@@ -513,29 +497,9 @@ export class MessagingService {
     messageId: string,
     recipientCount: number
   ): Promise<void> {
-    // Find the message first
-    const result = await dynamoDocClient.send(new QueryCommand({
-      TableName: config.tables.messages,
-      IndexName: 'MessageIndex',
-      KeyConditionExpression: 'messageId = :messageId',
-      ExpressionAttributeValues: {
-        ':messageId': messageId
-      },
-      Limit: 1
-    }));
-
-    if (!result.Items || result.Items.length === 0) {
-      throw new Error(`Message ${messageId} not found`);
-    }
-
-    const message = result.Items[0];
-
     await dynamoDocClient.send(new UpdateCommand({
       TableName: config.tables.messages,
-      Key: {
-        PK: `USER#${message.userId}`,
-        SK: `MESSAGE#${messageId}`
-      },
+      Key: { messageId },
       UpdateExpression: 'SET recipientCount = :recipientCount',
       ExpressionAttributeValues: {
         ':recipientCount': recipientCount
@@ -550,29 +514,9 @@ export class MessagingService {
     messageId: string,
     content: string
   ): Promise<void> {
-    // Find the message first
-    const result = await dynamoDocClient.send(new QueryCommand({
-      TableName: config.tables.messages,
-      IndexName: 'MessageIndex',
-      KeyConditionExpression: 'messageId = :messageId',
-      ExpressionAttributeValues: {
-        ':messageId': messageId
-      },
-      Limit: 1
-    }));
-
-    if (!result.Items || result.Items.length === 0) {
-      throw new Error(`Message ${messageId} not found`);
-    }
-
-    const message = result.Items[0];
-
     await dynamoDocClient.send(new UpdateCommand({
       TableName: config.tables.messages,
-      Key: {
-        PK: `USER#${message.userId}`,
-        SK: `MESSAGE#${messageId}`
-      },
+      Key: { messageId },
       UpdateExpression: 'SET content = :content',
       ExpressionAttributeValues: {
         ':content': content

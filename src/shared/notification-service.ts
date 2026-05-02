@@ -167,10 +167,7 @@ export class NotificationService {
   ): Promise<NotificationSettings> {
     await dynamoDocClient.send(new UpdateCommand({
       TableName: config.tables.users,
-      Key: {
-        PK: `USER#${userId}`,
-        SK: 'PROFILE'
-      },
+      Key: { userId },
       UpdateExpression: 'SET notificationPreferences = :prefs, updatedAt = :updatedAt',
       ExpressionAttributeValues: {
         ':prefs': preferences,
@@ -188,10 +185,7 @@ export class NotificationService {
     try {
       const result = await dynamoDocClient.send(new GetCommand({
         TableName: config.tables.users,
-        Key: {
-          PK: `USER#${userId}`,
-          SK: 'PROFILE'
-        }
+        Key: { userId }
       }));
 
       if (result.Item && result.Item.notificationPreferences) {
@@ -218,10 +212,7 @@ export class NotificationService {
     try {
       const result = await dynamoDocClient.send(new GetCommand({
         TableName: config.tables.users,
-        Key: {
-          PK: `USER#${userId}`,
-          SK: 'PROFILE'
-        }
+        Key: { userId }
       }));
 
       if (!result.Item) {
@@ -297,10 +288,10 @@ export class NotificationService {
   static async getNotifications(userId: string): Promise<Notification[]> {
     const result = await dynamoDocClient.send(new QueryCommand({
       TableName: config.tables.notifications,
-      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+      IndexName: 'UserNotificationsIndex',
+      KeyConditionExpression: 'userId = :userId',
       ExpressionAttributeValues: {
-        ':pk': `USER#${userId}`,
-        ':sk': 'NOTIFICATION#'
+        ':userId': userId
       },
       ScanIndexForward: false // Most recent first
     }));
@@ -309,10 +300,7 @@ export class NotificationService {
       return [];
     }
 
-    return result.Items.map(item => {
-      const { PK, SK, ...notificationData } = item;
-      return NotificationModel.deserialize(notificationData);
-    });
+    return result.Items.map(item => NotificationModel.deserialize(item));
   }
 
   /**
@@ -321,10 +309,7 @@ export class NotificationService {
   static async markAsRead(userId: string, notificationId: string): Promise<void> {
     await dynamoDocClient.send(new UpdateCommand({
       TableName: config.tables.notifications,
-      Key: {
-        PK: `USER#${userId}`,
-        SK: `NOTIFICATION#${notificationId}`
-      },
+      Key: { notificationId },
       UpdateExpression: 'SET #read = :read',
       ExpressionAttributeNames: {
         '#read': 'read'
@@ -365,11 +350,7 @@ export class NotificationService {
 
     await dynamoDocClient.send(new PutCommand({
       TableName: config.tables.notifications,
-      Item: {
-        PK: `USER#${notification.userId}`,
-        SK: `NOTIFICATION#${notification.notificationId}`,
-        ...serialized
-      }
+      Item: serialized
     }));
   }
 
