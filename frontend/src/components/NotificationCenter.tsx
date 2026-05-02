@@ -23,8 +23,8 @@ const NotificationCenter: React.FC = () => {
 
   const loadNotifications = useCallback(async () => {
     try {
-      const response = await apiService.getNotifications();
-      const data = (response as any).notifications || response;
+      const response: any = await apiService.getNotifications();
+      const data = response?.data?.notifications || response?.notifications || (Array.isArray(response) ? response : []);
       setNotifications(Array.isArray(data) ? data as Notification[] : []);
     } catch (err) {
       console.error('Failed to load notifications:', err);
@@ -34,8 +34,8 @@ const NotificationCenter: React.FC = () => {
 
   const loadPreferences = useCallback(async () => {
     try {
-      const response = await apiService.getNotificationPreferences();
-      const data = (response as any).preferences || response;
+      const response: any = await apiService.getNotificationPreferences();
+      const data = response?.data?.preferences || response?.preferences || response;
       if (data && typeof data === 'object') {
         setPreferences(data as NotificationSettings);
       }

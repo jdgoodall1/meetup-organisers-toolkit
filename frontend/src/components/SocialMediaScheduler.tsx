@@ -21,8 +21,9 @@ const SocialMediaScheduler: React.FC = () => {
       setError(null);
 
       // Load scheduled posts
-      const posts = await apiService.getScheduledPosts() as ScheduledPost[];
-      setScheduledPosts(posts);
+      const postsRes: any = await apiService.getScheduledPosts();
+      const posts = postsRes?.data?.posts || postsRes?.posts || (Array.isArray(postsRes) ? postsRes : []);
+      setScheduledPosts(posts as ScheduledPost[]);
 
       // Check LinkedIn connection and load organizations
       try {

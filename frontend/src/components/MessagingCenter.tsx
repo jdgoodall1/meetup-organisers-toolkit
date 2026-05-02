@@ -43,9 +43,10 @@ const MessagingCenter: React.FC = () => {
         apiService.getEvents(),
       ]);
 
-      setMessages((messagesRes as any).messages || messagesRes as Message[]);
-      setTemplates(Array.isArray(templatesRes) ? templatesRes as MessageTemplate[] : []);
-      setEvents(Array.isArray(eventsRes) ? eventsRes as Event[] : []);
+      setMessages((messagesRes as any)?.data?.messages || (messagesRes as any)?.messages || (Array.isArray(messagesRes) ? messagesRes : []) as Message[]);
+      setTemplates((templatesRes as any)?.data?.templates || (Array.isArray(templatesRes) ? templatesRes : []) as MessageTemplate[]);
+      const evts = (eventsRes as any)?.data?.events || (eventsRes as any)?.events || (Array.isArray(eventsRes) ? eventsRes : []);
+      setEvents(evts as Event[]);
     } catch (err) {
       console.error('Failed to load messaging data:', err);
       setError(err instanceof Error ? err.message : 'Failed to load messaging data');

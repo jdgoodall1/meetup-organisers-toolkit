@@ -266,6 +266,13 @@ Resources:
   # Lambda Functions
   AuthFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+          - handlers/auth.ts
     Properties:
       FunctionName: !Sub ${AWS::StackName}-auth
       CodeUri: src/
@@ -295,6 +302,13 @@ Resources:
 
   EventsFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+          - handlers/events.ts
     Properties:
       FunctionName: !Sub ${AWS::StackName}-events
       CodeUri: src/
@@ -352,6 +366,13 @@ Resources:
 
   SocialFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+          - handlers/social.ts
     Properties:
       FunctionName: !Sub ${AWS::StackName}-social
       CodeUri: src/
@@ -383,6 +404,13 @@ Resources:
 
   MessagingFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+          - handlers/messaging.ts
     Properties:
       FunctionName: !Sub ${AWS::StackName}-messaging
       CodeUri: src/
@@ -407,6 +435,12 @@ Resources:
             RestApiId: !Ref ApiGateway
             Path: /messages
             Method: get
+        GetTemplates:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /messages/templates
+            Method: get
         UpdateTemplates:
           Type: Api
           Properties:
@@ -422,6 +456,13 @@ Resources:
 
   NotificationFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+          - handlers/notifications.ts
     Properties:
       FunctionName: !Sub ${AWS::StackName}-notifications
       CodeUri: src/
@@ -459,6 +500,13 @@ Resources:
 
   SyncFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+          - handlers/sync.ts
     Properties:
       FunctionName: !Sub ${AWS::StackName}-sync
       CodeUri: src/
@@ -494,6 +542,13 @@ Resources:
 
   SchedulerFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+          - handlers/scheduler.ts
     Properties:
       FunctionName: !Sub ${AWS::StackName}-scheduler
       CodeUri: src/
@@ -575,6 +630,7 @@ Resources:
               Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: false
         Authorizers:
           CognitoAuthorizer:
             UserPoolArn: !GetAtt UserPool.Arn

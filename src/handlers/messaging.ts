@@ -28,6 +28,9 @@ export const handler = async (
       case 'GET /messages':
         return await getMessages(user.userId);
 
+      case 'GET /messages/templates':
+        return await getMessageTemplates(user.userId);
+
       case 'PUT /messages/templates':
         return await updateMessageTemplates(body, user.userId);
 
@@ -122,6 +125,11 @@ async function scheduleMessage(body: string | null, userId: string): Promise<API
 async function getMessages(userId: string): Promise<APIGatewayProxyResult> {
   // In a full implementation, this would query the Messages table by userId
   return createResponse(200, { messages: [] });
+}
+
+async function getMessageTemplates(userId: string): Promise<APIGatewayProxyResult> {
+  // In a full implementation, this would query templates from the database
+  return createResponse(200, { templates: [] });
 }
 
 async function updateMessageTemplates(body: string | null, userId: string): Promise<APIGatewayProxyResult> {

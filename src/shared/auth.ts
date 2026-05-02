@@ -60,20 +60,29 @@ export async function validateToken(token: string): Promise<AuthenticatedUser> {
 }
 
 /**
- * Extracts and validates authentication from API Gateway event
+ * Extracts and validates authentication from API Gateway event.
+ * When behind a Cognito authorizer, user info is in requestContext.authorizer.claims.
+ * Falls back to manual JWT validation for direct invocations.
  */
 export async function extractAuthFromEvent(event: APIGatewayProxyEvent): Promise<AuthenticatedUser> {
-  const authHeader = event.headers.Authorization || event.headers.authorization;
+  // First, try to get user info from Cognito authorizer claims (API Gateway path)
+  const claims = event.requestContext?.authorizer?.claims;
+  if (claims && claims.sub) {
+    return {
+      userId: claims.sub,
+      email: claims.email || claims['cognito:username'] || '',
+      name: claims.name || claims.email?.split('@')[0] || 'User',
+    };
+  }
+
+  // Fallback: manual JWT validation (for direct Lambda invocations or testing)
+  const authHeader = event.headers?.Authorization || event.headers?.authorization;
   
   if (!authHeader) {
     throw new Error('No authorization header provided');
   }
 
-  if (!authHeader.startsWith('Bearer ')) {
-    throw new Error('Invalid authorization header format');
-  }
-
-  const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+  const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader;
   return await validateToken(token);
 }
 
@@ -97,7 +106,12 @@ export async function createOrUpdateUserProfile(authenticatedUser: Authenticated
 
     await dynamoDocClient.send(new PutCommand({
       TableName: config.tables.users,
-      Item: updatedUser,
+      Item: {
+        ...updatedUser,
+        lastSyncTime: updatedUser.lastSyncTime instanceof Date ? updatedUser.lastSyncTime.toISOString() : updatedUser.lastSyncTime,
+        createdAt: updatedUser.createdAt instanceof Date ? updatedUser.createdAt.toISOString() : updatedUser.createdAt,
+        updatedAt: now.toISOString(),
+      },
     }));
 
     return updatedUser;
@@ -122,7 +136,12 @@ export async function createOrUpdateUserProfile(authenticatedUser: Authenticated
 
     await dynamoDocClient.send(new PutCommand({
       TableName: config.tables.users,
-      Item: newUser,
+      Item: {
+        ...newUser,
+        lastSyncTime: now.toISOString(),
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      },
     }));
 
     return newUser;

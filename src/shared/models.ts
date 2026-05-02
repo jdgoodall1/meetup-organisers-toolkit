@@ -194,11 +194,7 @@ export class EventModel {
     
     await dynamoDocClient.send(new PutCommand({
       TableName: config.tables.events,
-      Item: {
-        PK: `USER#${event.userId}`,
-        SK: `EVENT#${event.eventId}`,
-        ...serializedEvent
-      }
+      Item: serializedEvent
     }));
 
     return event;
@@ -208,8 +204,7 @@ export class EventModel {
     const result = await dynamoDocClient.send(new GetCommand({
       TableName: config.tables.events,
       Key: {
-        PK: `USER#${userId}`,
-        SK: `EVENT#${eventId}`
+        eventId
       }
     }));
 
@@ -217,8 +212,12 @@ export class EventModel {
       return null;
     }
 
-    const { PK, SK, ...eventData } = result.Item;
-    return this.deserialize(eventData);
+    // Verify the event belongs to the requesting user
+    if (result.Item.userId !== userId) {
+      return null;
+    }
+
+    return this.deserialize(result.Item);
   }
 
   static async update(event: Event): Promise<Event> {
@@ -227,11 +226,7 @@ export class EventModel {
     
     await dynamoDocClient.send(new PutCommand({
       TableName: config.tables.events,
-      Item: {
-        PK: `USER#${event.userId}`,
-        SK: `EVENT#${event.eventId}`,
-        ...serializedEvent
-      }
+      Item: serializedEvent
     }));
 
     return event;
@@ -241,8 +236,7 @@ export class EventModel {
     await dynamoDocClient.send(new DeleteCommand({
       TableName: config.tables.events,
       Key: {
-        PK: `USER#${userId}`,
-        SK: `EVENT#${eventId}`
+        eventId
       }
     }));
   }
@@ -250,10 +244,10 @@ export class EventModel {
   static async getByUserId(userId: string): Promise<Event[]> {
     const result = await dynamoDocClient.send(new QueryCommand({
       TableName: config.tables.events,
-      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+      IndexName: 'UserEventsIndex',
+      KeyConditionExpression: 'userId = :userId',
       ExpressionAttributeValues: {
-        ':pk': `USER#${userId}`,
-        ':sk': 'EVENT#'
+        ':userId': userId
       }
     }));
 
@@ -261,10 +255,7 @@ export class EventModel {
       return [];
     }
 
-    return result.Items.map(item => {
-      const { PK, SK, ...eventData } = item;
-      return this.deserialize(eventData);
-    });
+    return result.Items.map(item => this.deserialize(item));
   }
 
   // Factory method for creating new events
