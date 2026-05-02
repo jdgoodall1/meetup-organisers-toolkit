@@ -380,6 +380,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ScheduledPostsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
         - SQSSendMessagePolicy:
             QueueName: !GetAtt SchedulerQueue.QueueName
       Events:
@@ -420,6 +422,8 @@ Resources:
             TableName: !Ref MessagesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref EventsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
         - SQSSendMessagePolicy:
             QueueName: !GetAtt SchedulerQueue.QueueName
       Events:
