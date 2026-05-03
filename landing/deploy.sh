@@ -1,5 +1,7 @@
-#!/bin/bash
+#!/bin/zsh
 set -e
+
+export DYLD_LIBRARY_PATH="$(brew --prefix expat)/lib:$DYLD_LIBRARY_PATH"
 
 STACK_NAME="eventpush-landing"
 REGION="us-east-1"
