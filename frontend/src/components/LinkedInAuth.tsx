@@ -21,9 +21,10 @@ const LinkedInAuth: React.FC<LinkedInAuthProps> = ({ onAuthSuccess, onAuthError 
   const checkLinkedInConnection = async () => {
     try {
       setLoading(true);
-      const linkedInProfile = await apiService.getLinkedInProfile() as LinkedInProfile;
-      if (linkedInProfile) {
-        setProfile(linkedInProfile);
+      const profileRes: any = await apiService.getLinkedInProfile();
+      const linkedInProfile = profileRes?.data || profileRes;
+      if (linkedInProfile && linkedInProfile.connected) {
+        setProfile(linkedInProfile as LinkedInProfile);
         setIsConnected(true);
         await loadOrganizations();
       }
@@ -38,8 +39,9 @@ const LinkedInAuth: React.FC<LinkedInAuthProps> = ({ onAuthSuccess, onAuthError 
 
   const loadOrganizations = async () => {
     try {
-      const orgs = await apiService.getLinkedInOrganizations() as LinkedInOrganization[];
-      setOrganizations(orgs);
+      const orgsRes: any = await apiService.getLinkedInOrganizations();
+      const orgs = orgsRes?.data?.organizations || orgsRes?.organizations || (Array.isArray(orgsRes) ? orgsRes : []);
+      setOrganizations(orgs as LinkedInOrganization[]);
     } catch (err) {
       console.error('Failed to load LinkedIn organizations:', err);
     }
