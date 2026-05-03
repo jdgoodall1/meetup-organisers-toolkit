@@ -54,7 +54,9 @@ class ApiService {
       throw new Error(`API Error: ${response.status} - ${errorText}`);
     }
 
-    return response.json();
+    const json = await response.json();
+    // Unwrap the {success, data} wrapper from the backend
+    return json.data !== undefined ? json.data : json;
   }
 
   // Auth endpoints
