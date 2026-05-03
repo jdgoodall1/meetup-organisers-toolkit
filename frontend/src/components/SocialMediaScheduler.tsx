@@ -21,15 +21,13 @@ const SocialMediaScheduler: React.FC = () => {
       setError(null);
 
       // Load scheduled posts
-      const postsRes: any = await apiService.getScheduledPosts();
-      const posts = postsRes?.data?.posts || postsRes?.posts || (Array.isArray(postsRes) ? postsRes : []);
-      setScheduledPosts(posts as ScheduledPost[]);
+      const postsData: any = await apiService.getScheduledPosts();
+      setScheduledPosts(postsData?.posts || (Array.isArray(postsData) ? postsData : []));
 
       // Check LinkedIn connection and load organizations
       try {
-        const orgsRes: any = await apiService.getLinkedInOrganizations();
-        const orgs = orgsRes?.data?.organizations || orgsRes?.organizations || (Array.isArray(orgsRes) ? orgsRes : []);
-        setOrganizations(orgs as LinkedInOrganization[]);
+        const orgsData: any = await apiService.getLinkedInOrganizations();
+        setOrganizations(orgsData?.organizations || (Array.isArray(orgsData) ? orgsData : []));
         setIsLinkedInConnected(true);
       } catch (linkedInError) {
         // LinkedIn not connected or error

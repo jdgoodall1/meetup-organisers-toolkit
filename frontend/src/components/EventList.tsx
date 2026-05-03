@@ -17,9 +17,8 @@ const EventList: React.FC<EventListProps> = ({ onEditEvent, onConfirmEvent, refr
     try {
       setLoading(true);
       setError(null);
-      const eventsData: any = await apiService.getEvents();
-      const events = eventsData?.data?.events || eventsData?.events || (Array.isArray(eventsData) ? eventsData : []);
-      setEvents(events as Event[]);
+      const data: any = await apiService.getEvents();
+      setEvents(data?.events || (Array.isArray(data) ? data : []));
     } catch (err) {
       console.error('Failed to load events:', err);
       setError(err instanceof Error ? err.message : 'Failed to load events');

@@ -44,8 +44,8 @@ const EventForm: React.FC<EventFormProps> = ({ event, onSave, onCancel, loading 
 
   const checkLinkedInPermissions = async () => {
     try {
-      const orgsRes: any = await apiService.getLinkedInOrganizations();
-      const organizations = orgsRes?.data?.organizations || orgsRes?.organizations || (Array.isArray(orgsRes) ? orgsRes : []);
+      const orgsData: any = await apiService.getLinkedInOrganizations();
+      const organizations = orgsData?.organizations || (Array.isArray(orgsData) ? orgsData : []);
       setLinkedInOrganizations(organizations as LinkedInOrganization[]);
       setIsLinkedInConnected(true);
       setLinkedInPermissionError(null);

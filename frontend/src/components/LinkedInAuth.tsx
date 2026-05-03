@@ -12,6 +12,7 @@ const LinkedInAuth: React.FC<LinkedInAuthProps> = ({ onAuthSuccess, onAuthError 
   const [profile, setProfile] = useState<LinkedInProfile | null>(null);
   const [organizations, setOrganizations] = useState<LinkedInOrganization[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingAction, setLoadingAction] = useState<'connecting' | 'disconnecting' | 'checking'>('checking');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -21,10 +22,10 @@ const LinkedInAuth: React.FC<LinkedInAuthProps> = ({ onAuthSuccess, onAuthError 
   const checkLinkedInConnection = async () => {
     try {
       setLoading(true);
-      const profileRes: any = await apiService.getLinkedInProfile();
-      const linkedInProfile = profileRes?.data || profileRes;
-      if (linkedInProfile && linkedInProfile.connected) {
-        setProfile(linkedInProfile as LinkedInProfile);
+      setLoadingAction('checking');
+      const profileData: any = await apiService.getLinkedInProfile();
+      if (profileData && profileData.connected) {
+        setProfile(profileData as LinkedInProfile);
         setIsConnected(true);
         await loadOrganizations();
       }
@@ -39,9 +40,8 @@ const LinkedInAuth: React.FC<LinkedInAuthProps> = ({ onAuthSuccess, onAuthError 
 
   const loadOrganizations = async () => {
     try {
-      const orgsRes: any = await apiService.getLinkedInOrganizations();
-      const orgs = orgsRes?.data?.organizations || orgsRes?.organizations || (Array.isArray(orgsRes) ? orgsRes : []);
-      setOrganizations(orgs as LinkedInOrganization[]);
+      const orgsData: any = await apiService.getLinkedInOrganizations();
+      setOrganizations(orgsData?.organizations || (Array.isArray(orgsData) ? orgsData : []));
     } catch (err) {
       console.error('Failed to load LinkedIn organizations:', err);
     }
@@ -104,23 +104,22 @@ const LinkedInAuth: React.FC<LinkedInAuthProps> = ({ onAuthSuccess, onAuthError 
   const handleAuthCallback = async (code: string, state: string) => {
     try {
       setLoading(true);
+      setLoadingAction('connecting');
       setError(null);
-
-      // Verify state to prevent CSRF attacks
       const storedState = sessionStorage.getItem('linkedin_oauth_state');
       if (state !== storedState) {
         throw new Error('Invalid state parameter - possible CSRF attack');
       }
 
       // Exchange code for access token via backend
-      const result = await apiService.connectLinkedIn(code) as { profile: LinkedInProfile };
+      const result: any = await apiService.connectLinkedIn(code);
       
-      if (result.profile) {
+      setIsConnected(true);
+      if (result?.profile) {
         setProfile(result.profile);
-        setIsConnected(true);
-        onAuthSuccess?.(result.profile);
-        await loadOrganizations();
       }
+      onAuthSuccess?.(result?.profile);
+      await loadOrganizations();
 
       // Clean up stored state
       sessionStorage.removeItem('linkedin_oauth_state');
@@ -137,6 +136,7 @@ const LinkedInAuth: React.FC<LinkedInAuthProps> = ({ onAuthSuccess, onAuthError 
   const handleDisconnect = async () => {
     try {
       setLoading(true);
+      setLoadingAction('disconnecting');
       setError(null);
       
       await apiService.disconnectLinkedIn();
@@ -154,10 +154,15 @@ const LinkedInAuth: React.FC<LinkedInAuthProps> = ({ onAuthSuccess, onAuthError 
   };
 
   if (loading) {
+    const loadingText = loadingAction === 'disconnecting' 
+      ? 'Disconnecting from LinkedIn...' 
+      : loadingAction === 'connecting'
+        ? 'Connecting to LinkedIn...'
+        : 'Checking LinkedIn connection...';
     return (
       <div className="linkedin-auth loading">
         <div className="loading-spinner"></div>
-        <p>Connecting to LinkedIn...</p>
+        <p>{loadingText}</p>
       </div>
     );
   }
