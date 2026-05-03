@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EventPush — Manage your meetups from one place</title>
+  <meta name="description" content="EventPush is a free event management tool for meetup organizers. Create events, schedule LinkedIn posts, message attendees, and sync across platforms — all from one dashboard.">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      color: #1a1a2e;
+      line-height: 1.6;
+      background: #fafafa;
+    }
+
+    a { color: #4361ee; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Header */
+    header {
+      background: #fff;
+      border-bottom: 1px solid #e0e0e0;
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo { font-size: 1.5rem; font-weight: 700; color: #1a1a2e; }
+    .logo span { color: #4361ee; }
+
+    .header-links a {
+      margin-left: 1.5rem;
+      font-size: 0.95rem;
+      color: #555;
+    }
+
+    .header-links a:hover { color: #4361ee; }
+
+    .cta-btn {
+      display: inline-block;
+      background: #4361ee;
+      color: #fff;
+      padding: 0.6rem 1.5rem;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 1rem;
+      transition: background 0.2s;
+    }
+
+    .cta-btn:hover { background: #3451d1; text-decoration: none; }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 5rem 2rem 4rem;
+      background: linear-gradient(135deg, #f0f4ff 0%, #fafafa 100%);
+    }
+
+    .hero h1 {
+      font-size: 2.8rem;
+      font-weight: 800;
+      margin-bottom: 1rem;
+      color: #1a1a2e;
+    }
+
+    .hero h1 span { color: #4361ee; }
+
+    .hero p {
+      font-size: 1.25rem;
+      color: #555;
+      max-width: 600px;
+      margin: 0 auto 2rem;
+    }
+
+    .hero-buttons { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+
+    .cta-btn-secondary {
+      display: inline-block;
+      background: #fff;
+      color: #4361ee;
+      padding: 0.6rem 1.5rem;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 1rem;
+      border: 2px solid #4361ee;
+      transition: all 0.2s;
+    }
+
+    .cta-btn-secondary:hover { background: #f0f4ff; text-decoration: none; }
+
+    /* Features */
+    .features {
+      padding: 4rem 2rem;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    .features h2 {
+      text-align: center;
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .features .subtitle {
+      text-align: center;
+      color: #777;
+      margin-bottom: 3rem;
+      font-size: 1.1rem;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 2rem;
+    }
+
+    .feature-card {
+      background: #fff;
+      border: 1px solid #e8e8e8;
+      border-radius: 10px;
+      padding: 2rem;
+      transition: box-shadow 0.2s;
+    }
+
+    .feature-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+
+    .feature-card .icon { font-size: 2rem; margin-bottom: 0.75rem; }
+
+    .feature-card h3 {
+      font-size: 1.2rem;
+      margin-bottom: 0.5rem;
+      color: #1a1a2e;
+    }
+
+    .feature-card p { color: #666; font-size: 0.95rem; }
+
+    /* How it works */
+    .how-it-works {
+      background: #fff;
+      padding: 4rem 2rem;
+      border-top: 1px solid #e8e8e8;
+      border-bottom: 1px solid #e8e8e8;
+    }
+
+    .how-it-works h2 {
+      text-align: center;
+      font-size: 2rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .steps {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      flex-wrap: wrap;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .step {
+      text-align: center;
+      flex: 1;
+      min-width: 200px;
+      max-width: 250px;
+    }
+
+    .step-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      height: 48px;
+      background: #4361ee;
+      color: #fff;
+      border-radius: 50%;
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+    }
+
+    .step h3 { font-size: 1.1rem; margin-bottom: 0.5rem; }
+    .step p { color: #666; font-size: 0.9rem; }
+
+    /* Open source */
+    .open-source {
+      text-align: center;
+      padding: 4rem 2rem;
+      max-width: 700px;
+      margin: 0 auto;
+    }
+
+    .open-source h2 { font-size: 2rem; margin-bottom: 1rem; }
+    .open-source p { color: #555; font-size: 1.1rem; margin-bottom: 1.5rem; }
+
+    .tech-badges {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 1.5rem;
+    }
+
+    .badge {
+      background: #f0f4ff;
+      color: #4361ee;
+      padding: 0.3rem 0.8rem;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    /* CTA */
+    .final-cta {
+      text-align: center;
+      padding: 4rem 2rem;
+      background: linear-gradient(135deg, #4361ee 0%, #3451d1 100%);
+      color: #fff;
+    }
+
+    .final-cta h2 { font-size: 2rem; margin-bottom: 0.75rem; }
+    .final-cta p { font-size: 1.1rem; margin-bottom: 2rem; opacity: 0.9; }
+
+    .final-cta .cta-btn {
+      background: #fff;
+      color: #4361ee;
+      padding: 0.8rem 2rem;
+      font-size: 1.1rem;
+    }
+
+    .final-cta .cta-btn:hover { background: #f0f4ff; }
+
+    /* Footer */
+    footer {
+      background: #1a1a2e;
+      color: #aaa;
+      padding: 2.5rem 2rem;
+      text-align: center;
+      font-size: 0.9rem;
+    }
+
+    footer a { color: #8899cc; }
+    footer a:hover { color: #fff; }
+
+    .footer-links {
+      display: flex;
+      gap: 1.5rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+
+    .footer-note {
+      margin-top: 1rem;
+      font-size: 0.8rem;
+      color: #777;
+    }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      .hero h1 { font-size: 2rem; }
+      .hero p { font-size: 1.05rem; }
+      header { flex-direction: column; gap: 0.75rem; }
+      .header-links a { margin-left: 0.75rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">Event<span>Push</span></div>
+    <div class="header-links">
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#open-source">Open source</a>
+      <a href="https://app.eventpush.co.uk" class="cta-btn">Get started</a>
+    </div>
+  </header>
+
+  <section class="hero">
+    <h1>Manage your meetups<br>from <span>one place</span></h1>
+    <p>Create events, schedule LinkedIn posts, message attendees, and sync across platforms — all from a single dashboard. Free for community organizers.</p>
+    <div class="hero-buttons">
+      <a href="https://app.eventpush.co.uk" class="cta-btn">Get started — it's free</a>
+      <a href="https://github.com/jdgoodall1/meetup-organisers-toolkit" class="cta-btn-secondary">View on GitHub</a>
+    </div>
+  </section>
+
+  <section class="features" id="features">
+    <h2>Everything you need to run a meetup</h2>
+    <p class="subtitle">Stop juggling platforms. EventPush handles the busywork.</p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="icon">📅</div>
+        <h3>Cross-platform events</h3>
+        <p>Create an event once and push it to Meetup.com and LinkedIn. No more copy-pasting between platforms.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">📣</div>
+        <h3>Automated LinkedIn posts</h3>
+        <p>Schedule 5 promotional posts per event — at 1 month, 2 weeks, 1 week, 3 days, and day of. Set it and forget it.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">💬</div>
+        <h3>Attendee messaging</h3>
+        <p>Send targeted messages to attendees or non-RSVP'd group members. Use templates to save time.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">🔄</div>
+        <h3>Event sync</h3>
+        <p>Import existing events from Meetup.com. Stay in sync when events are modified externally.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">📝</div>
+        <h3>Draft workflows</h3>
+        <p>Create draft events for review before publishing. Perfect for organizer teams that need approval flows.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">🔔</div>
+        <h3>Notifications</h3>
+        <p>Get notified about automated actions, errors, and upcoming events that need your attention.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="how-it-works" id="how-it-works">
+    <h2>How it works</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-number">1</div>
+        <h3>Create your event</h3>
+        <p>Fill in the details once in EventPush. Title, description, date, location.</p>
+      </div>
+      <div class="step">
+        <div class="step-number">2</div>
+        <h3>Push to platforms</h3>
+        <p>EventPush creates the event on Meetup.com and LinkedIn automatically.</p>
+      </div>
+      <div class="step">
+        <div class="step-number">3</div>
+        <h3>Automate promotion</h3>
+        <p>Social posts and attendee messages are scheduled and sent for you.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="open-source" id="open-source">
+    <h2>Free and open source</h2>
+    <p>EventPush is built for the community, by the community. The entire codebase is open source. Self-host it yourself or use our hosted version for free.</p>
+    <a href="https://github.com/jdgoodall1/meetup-organisers-toolkit" class="cta-btn-secondary">View on GitHub</a>
+    <div class="tech-badges">
+      <span class="badge">AWS Serverless</span>
+      <span class="badge">React</span>
+      <span class="badge">TypeScript</span>
+      <span class="badge">DynamoDB</span>
+      <span class="badge">Cognito</span>
+      <span class="badge">API Gateway</span>
+    </div>
+  </section>
+
+  <section class="final-cta">
+    <h2>Ready to simplify your meetup management?</h2>
+    <p>Join organizers who spend less time on admin and more time building community.</p>
+    <a href="https://app.eventpush.co.uk" class="cta-btn">Get started — it's free</a>
+  </section>
+
+  <footer>
+    <div class="footer-links">
+      <a href="https://app.eventpush.co.uk">App</a>
+      <a href="https://github.com/jdgoodall1/meetup-organisers-toolkit">GitHub</a>
+      <a href="/privacy.html">Privacy Policy</a>
+      <a href="/terms.html">Terms</a>
+    </div>
+    <p>&copy; 2025 EventPush. Free for community organizers.</p>
+    <p class="footer-note">EventPush uses the Meetup API but is not verified by Meetup.</p>
+  </footer>
+
+</body>
+</html>
