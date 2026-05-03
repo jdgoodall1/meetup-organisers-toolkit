@@ -1,4 +1,4 @@
-# LogiMeet - Bug Tracking
+# EventPush - Bug Tracking
 
 ## Active Bugs
 

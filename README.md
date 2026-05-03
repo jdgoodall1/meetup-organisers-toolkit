@@ -1,6 +1,6 @@
-# LogiMeet
+# EventPush
 
-A serverless web application built on AWS that provides automated event management for meetup organizers. LogiMeet integrates with Meetup.com and LinkedIn APIs to create events, schedule social media posts, send automated messages, and provide comprehensive notifications.
+A serverless web application built on AWS that provides automated event management for meetup organizers. EventPush integrates with Meetup.com and LinkedIn APIs to create events, schedule social media posts, send automated messages, and provide comprehensive notifications.
 
 ## Architecture
 

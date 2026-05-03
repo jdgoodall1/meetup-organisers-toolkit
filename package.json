@@ -1,5 +1,5 @@
 {
-  "name": "logimeet",
+  "name": "eventpush",
   "version": "1.0.0",
   "description": "Serverless meetup management platform with Meetup.com and LinkedIn integration",
   "main": "index.js",

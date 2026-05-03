@@ -14,7 +14,7 @@ const awsConfig = {
   },
   API: {
     REST: {
-      LogiMeetAPI: {
+      EventPushAPI: {
         endpoint: import.meta.env.VITE_API_ENDPOINT || 'https://api.example.com/dev',
         region: import.meta.env.VITE_AWS_REGION || 'us-east-1',
       },

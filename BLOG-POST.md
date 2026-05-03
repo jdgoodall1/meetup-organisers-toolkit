@@ -1,9 +1,9 @@
-# Building LogiMeet: A Serverless Event Management Platform on AWS
+# Building EventPush: A Serverless Event Management Platform on AWS
 
 ## Introduction
 
 <!-- Hook: The problem of managing meetups across multiple platforms -->
-<!-- Brief overview of what LogiMeet does -->
+<!-- Brief overview of what EventPush does -->
 <!-- Why serverless was the right choice -->
 
 ## The Architecture
