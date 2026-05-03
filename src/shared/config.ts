@@ -29,6 +29,13 @@ export const config = {
   // Social media posting schedule (in days before event)
   socialPostSchedule: [30, 14, 7, 3, 0], // 1 month, 2 weeks, 1 week, 3 days, day of
 
+  // LinkedIn OAuth configuration
+  linkedin: {
+    clientId: process.env.LINKEDIN_CLIENT_ID || '',
+    clientSecret: process.env.LINKEDIN_CLIENT_SECRET || '',
+    redirectUri: process.env.LINKEDIN_REDIRECT_URI || '',
+  },
+
   // External API endpoints
   apis: {
     meetup: {

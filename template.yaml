@@ -560,6 +560,48 @@ Resources:
             Path: /sync/resolve-conflict
             Method: post
 
+  LinkedInFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+          - handlers/linkedin.ts
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-linkedin
+      CodeUri: src/
+      Handler: handlers/linkedin.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+      Events:
+        Connect:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /linkedin/connect
+            Method: post
+        GetProfile:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /linkedin/profile
+            Method: get
+        GetOrganizations:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /linkedin/organizations
+            Method: get
+        Disconnect:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /linkedin/disconnect
+            Method: post
+
   SchedulerFunction:
     Type: AWS::Serverless::Function
     Metadata:

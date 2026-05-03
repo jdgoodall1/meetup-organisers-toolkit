@@ -27,8 +27,9 @@ const SocialMediaScheduler: React.FC = () => {
 
       // Check LinkedIn connection and load organizations
       try {
-        const orgs = await apiService.getLinkedInOrganizations() as LinkedInOrganization[];
-        setOrganizations(orgs);
+        const orgsRes: any = await apiService.getLinkedInOrganizations();
+        const orgs = orgsRes?.data?.organizations || orgsRes?.organizations || (Array.isArray(orgsRes) ? orgsRes : []);
+        setOrganizations(orgs as LinkedInOrganization[]);
         setIsLinkedInConnected(true);
       } catch (linkedInError) {
         // LinkedIn not connected or error
