@@ -258,7 +258,7 @@ Resources:
           Id: SchedulerFunctionTarget
           Input: !Sub |
             {
-              "source": "logimeet.scheduler",
+              "source": "eventpush.scheduler",
               "detail-type": "Check Scheduled Posts",
               "detail": {}
             }

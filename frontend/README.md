@@ -1,6 +1,6 @@
-# LogiMeet Frontend
+# EventPush Frontend
 
-LogiMeet is a comprehensive meetup management platform built with React, TypeScript, and Vite. This frontend provides an intuitive interface for managing events, social media scheduling, messaging, and notifications.
+EventPush is a comprehensive meetup management platform built with React, TypeScript, and Vite. This frontend provides an intuitive interface for managing events, social media scheduling, messaging, and notifications.
 
 ## Features
 

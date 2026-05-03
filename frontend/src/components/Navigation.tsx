@@ -19,7 +19,7 @@ const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }) => {
   return (
     <nav className="navigation">
       <div className="nav-header">
-        <h1>LogiMeet</h1>
+        <h1>EventPush</h1>
         <div className="user-info">
           <span className="user-name">{user?.name}</span>
           <button onClick={logout} className="logout-btn">

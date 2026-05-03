@@ -48,7 +48,7 @@ async function handleSQSEvent(event: SQSEvent): Promise<void> {
 async function handleEventBridgeEvent(event: EventBridgeEvent<string, any>): Promise<void> {
   console.log('Processing EventBridge event:', event.source, event['detail-type']);
   
-  if (event.source === 'logimeet.scheduler' && event['detail-type'] === 'Check Scheduled Posts') {
+  if (event.source === 'eventpush.scheduler' && event['detail-type'] === 'Check Scheduled Posts') {
     await checkAndExecuteScheduledPosts();
   }
 }

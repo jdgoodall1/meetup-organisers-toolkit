@@ -1,7 +1,7 @@
 {
-  "name": "logimeet-lambda",
+  "name": "eventpush-lambda",
   "version": "1.0.0",
-  "description": "Lambda functions for logimeet",
+  "description": "Lambda functions for eventpush",
   "main": "index.js",
   "scripts": {
     "build": "tsc"

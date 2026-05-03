@@ -90,7 +90,7 @@ const Login: React.FC = () => {
     return (
       <div className="login-container">
         <div className="login-form">
-          <h1>LogiMeet</h1>
+          <h1>EventPush</h1>
           <div className="loading-screen">
             <div className="loading-spinner"></div>
             <p>Signing you in...</p>
@@ -116,7 +116,7 @@ const Login: React.FC = () => {
   return (
     <div className="login-container">
       <div className="login-form">
-        <h1>LogiMeet</h1>
+        <h1>EventPush</h1>
         <p>
           {mode === 'login' && 'Sign in to manage your events'}
           {mode === 'signup' && 'Create your account'}

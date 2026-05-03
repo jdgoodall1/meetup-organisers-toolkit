@@ -1,6 +1,6 @@
 # Authentication Setup Guide
 
-This document explains how to configure AWS Cognito authentication for the LogiMeet frontend.
+This document explains how to configure AWS Cognito authentication for the EventPush frontend.
 
 ## Overview
 

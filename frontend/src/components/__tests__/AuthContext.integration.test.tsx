@@ -107,7 +107,7 @@ describe('Authentication Integration', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('LogiMeet')).toBeInTheDocument();
+      expect(screen.getByText('EventPush')).toBeInTheDocument();
     });
   });
 });

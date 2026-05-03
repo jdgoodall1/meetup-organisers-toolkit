@@ -1,4 +1,4 @@
-# LogiMeet AWS Deployment Guide
+# EventPush AWS Deployment Guide
 
 ## Prerequisites
 
@@ -25,7 +25,7 @@ sam deploy
 ```
 
 During guided deployment you'll be prompted for:
-- **Stack name**: e.g. `logimeet` or `logimeet-dev`
+- **Stack name**: e.g. `eventpush` or `eventpush-dev`
 - **AWS Region**: e.g. `us-east-1`
 - **Environment**: `dev`, `staging`, or `prod`
 
@@ -133,7 +133,7 @@ git push origin main
 
 ```bash
 # Remove backend stack (all resources)
-sam delete --stack-name logimeet
+sam delete --stack-name eventpush
 
 # Frontend: delete the app in the Amplify console
 ```
