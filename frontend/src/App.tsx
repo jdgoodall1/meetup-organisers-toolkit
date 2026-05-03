@@ -56,7 +56,7 @@ const AppContent: React.FC = () => {
         } 
       />
       <Route 
-        path="/linkedin/callback" 
+        path="/auth/linkedin/callback" 
         element={<LinkedInCallback />} 
       />
       <Route 

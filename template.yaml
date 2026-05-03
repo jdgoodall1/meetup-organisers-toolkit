@@ -20,6 +20,9 @@ Globals:
         USER_POOL_CLIENT_ID: !Ref UserPoolClient
         SCHEDULER_QUEUE_URL: !Ref SchedulerQueue
         REGION: !Ref AWS::Region
+        LINKEDIN_CLIENT_ID: !Ref LinkedInClientId
+        LINKEDIN_CLIENT_SECRET: !Ref LinkedInClientSecret
+        LINKEDIN_REDIRECT_URI: !Ref LinkedInRedirectUri
 
 Parameters:
   Environment:
@@ -27,6 +30,19 @@ Parameters:
     Default: dev
     AllowedValues: [dev, staging, prod]
     Description: Environment name
+  LinkedInClientId:
+    Type: String
+    Default: '78w4gzdnyvv0ut'
+    Description: LinkedIn OAuth Client ID
+  LinkedInClientSecret:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: LinkedIn OAuth Client Secret
+  LinkedInRedirectUri:
+    Type: String
+    Default: 'https://app.eventpush.co.uk/auth/linkedin/callback'
+    Description: LinkedIn OAuth Redirect URI
 
 Resources:
   # Cognito User Pool

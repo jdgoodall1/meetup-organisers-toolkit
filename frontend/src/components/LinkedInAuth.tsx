@@ -49,9 +49,9 @@ const LinkedInAuth: React.FC<LinkedInAuthProps> = ({ onAuthSuccess, onAuthError 
     setError(null);
     
     // LinkedIn OAuth URL - this would typically be configured in environment variables
-    const clientId = process.env.VITE_LINKEDIN_CLIENT_ID || 'your-linkedin-client-id';
-    const redirectUri = encodeURIComponent(`${window.location.origin}/linkedin/callback`);
-    const scope = encodeURIComponent('r_liteprofile r_emailaddress w_member_social rw_organization_admin');
+    const clientId = import.meta.env.VITE_LINKEDIN_CLIENT_ID || '78w4gzdnyvv0ut';
+    const redirectUri = encodeURIComponent(`${window.location.origin}/auth/linkedin/callback`);
+    const scope = encodeURIComponent('openid profile email w_member_social');
     const state = Math.random().toString(36).substring(7); // Simple state for CSRF protection
     
     // Store state in sessionStorage for verification
