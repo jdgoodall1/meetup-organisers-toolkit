@@ -1,28 +1,18 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, type RouteObject } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './components/Login';
-import Dashboard from './components/Dashboard';
-import LinkedInCallback from './components/LinkedInCallback';
+import RequireRole from './components/common/RequireRole';
+import Layout from './components/common/Layout';
+import { adminRoutes } from './routes/adminRoutes';
+import { speakerRoutes } from './routes/speakerRoutes';
+import { homePathForRole } from './utils/roles';
 import './App.css';
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
 
-  if (loading) {
-    return (
-      <div className="loading-screen">
-        <div className="loading-spinner"></div>
-        <p>Loading...</p>
-      </div>
-    );
-  }
-
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
-};
 
 const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, role } = useAuth();
 
   if (loading) {
     return (
@@ -33,8 +23,24 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     );
   }
 
-  return !isAuthenticated ? <>{children}</> : <Navigate to="/dashboard" replace />;
+  return !isAuthenticated ? <>{children}</> : <Navigate to={homePathForRole(role)} replace />;
 };
+
+const RoleRedirect: React.FC = () => {
+  const { loading, role } = useAuth();
+  if (loading) return null;
+  return <Navigate to={homePathForRole(role)} replace />;
+};
+
+// Converts per-area route configs into <Route> elements (flat configs only).
+const renderRoutes = (routes: RouteObject[]) =>
+  routes.map((r, i) =>
+    r.index ? (
+      <Route key={i} index element={r.element} />
+    ) : (
+      <Route key={r.path} path={r.path} element={r.element} />
+    ),
+  );
 
 const AppContent: React.FC = () => {
   return (
@@ -47,22 +53,14 @@ const AppContent: React.FC = () => {
           </PublicRoute>
         } 
       />
-      <Route 
-        path="/dashboard" 
-        element={
-          <ProtectedRoute>
-            <Dashboard />
-          </ProtectedRoute>
-        } 
-      />
-      <Route 
-        path="/auth/linkedin/callback" 
-        element={<LinkedInCallback />} 
-      />
-      <Route 
-        path="/" 
-        element={<Navigate to="/dashboard" replace />} 
-      />
+      <Route path="/admin" element={<RequireRole role="admin"><Layout /></RequireRole>}>
+        {renderRoutes(adminRoutes)}
+      </Route>
+      <Route path="/speaker" element={<RequireRole role="speaker"><Layout /></RequireRole>}>
+        {renderRoutes(speakerRoutes)}
+      </Route>
+      <Route path="/" element={<RoleRedirect />} />
+      <Route path="*" element={<RoleRedirect />} />
     </Routes>
   );
 };

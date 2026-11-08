@@ -2,6 +2,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Login from '../Login';
 import { AuthProvider } from '../../contexts/AuthContext';
+import { APP_NAME } from '../../config/app';
+
+// import.meta is unavailable under Jest
+jest.mock('../../aws-config', () => ({}));
 
 // Mock the AuthContext
 const mockLogin = jest.fn();
@@ -34,19 +38,11 @@ describe('Login Component', () => {
   it('renders login form with all required fields', () => {
     renderLogin();
     
-    expect(screen.getByText('Meetup Management Platform')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: APP_NAME })).toBeInTheDocument();
     expect(screen.getByText('Sign in to manage your events')).toBeInTheDocument();
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
-  });
-
-  it('displays demo credentials', () => {
-    renderLogin();
-    
-    expect(screen.getByText('Demo Credentials:')).toBeInTheDocument();
-    expect(screen.getByText('Email: demo@example.com')).toBeInTheDocument();
-    expect(screen.getByText('Password: password')).toBeInTheDocument();
   });
 
   it('handles form submission with valid credentials', async () => {

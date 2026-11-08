@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Meetup Management Platform - Serverless infrastructure
+Description: CFP and speaker toolkit - Serverless infrastructure
 
 Globals:
   Function:
@@ -10,19 +10,16 @@ Globals:
     Environment:
       Variables:
         EVENTS_TABLE: !Ref EventsTable
-        USERS_TABLE: !Ref UsersTable
-        SCHEDULED_POSTS_TABLE: !Ref ScheduledPostsTable
-        MESSAGES_TABLE: !Ref MessagesTable
-        NOTIFICATIONS_TABLE: !Ref NotificationsTable
-        SYNC_RECORDS_TABLE: !Ref SyncRecordsTable
-        SYNC_CONFLICTS_TABLE: !Ref SyncConflictsTable
-        USER_POOL_ID: !Ref UserPool
-        USER_POOL_CLIENT_ID: !Ref UserPoolClient
-        SCHEDULER_QUEUE_URL: !Ref SchedulerQueue
+        SPEAKERS_TABLE: !Ref SpeakersTable
+        SPEAKER_ADMIN_TABLE: !Ref SpeakerAdminTable
+        CFPS_TABLE: !Ref CfpsTable
+        QUESTION_TEMPLATES_TABLE: !Ref QuestionTemplatesTable
+        SUBMISSIONS_TABLE: !Ref SubmissionsTable
+        SUBMISSION_REVIEWS_TABLE: !Ref SubmissionReviewsTable
+        BOOKINGS_TABLE: !Ref BookingsTable
+        HEADSHOTS_BUCKET: !Ref HeadshotsBucket
+        ALLOWED_ORIGIN: !Ref AllowedOrigin
         REGION: !Ref AWS::Region
-        LINKEDIN_CLIENT_ID: !Ref LinkedInClientId
-        LINKEDIN_CLIENT_SECRET: !Ref LinkedInClientSecret
-        LINKEDIN_REDIRECT_URI: !Ref LinkedInRedirectUri
 
 Parameters:
   Environment:
@@ -30,28 +27,34 @@ Parameters:
     Default: dev
     AllowedValues: [dev, staging, prod]
     Description: Environment name
-  LinkedInClientId:
+
+  AppName:
     Type: String
-    Default: '78w4gzdnyvv0ut'
-    Description: LinkedIn OAuth Client ID
-  LinkedInClientSecret:
+    Default: Speaker Toolkit
+    Description: Product name used in the sign-up verification email. Keep in step with APP_NAME in frontend/src/config/app.ts.
+
+  AllowedOrigin:
     Type: String
-    NoEcho: true
-    Default: ''
-    Description: LinkedIn OAuth Client Secret
-  LinkedInRedirectUri:
-    Type: String
-    Default: 'https://app.eventpush.co.uk/auth/linkedin/callback'
-    Description: LinkedIn OAuth Redirect URI
+    Default: http://localhost:3000
+    Description: Origin of the web app (for example the Amplify domain). Used for API and S3 CORS.
 
 Resources:
-  # Cognito User Pool
+  # ---------------------------------------------------------------------------
+  # Cognito
+  # ---------------------------------------------------------------------------
   UserPool:
     Type: AWS::Cognito::UserPool
     Properties:
       UserPoolName: !Sub ${AWS::StackName}-user-pool
       AutoVerifiedAttributes:
         - email
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailSubject: !Sub '${AppName}: your 6-digit code'
+        EmailMessage: !Sub |-
+          Your ${AppName} code is {####}
+
+          Go back to the ${AppName} sign-up page and enter this code to finish creating your account. If you didn't sign up, you can ignore this email.
       UsernameAttributes:
         - email
       Policies:
@@ -66,6 +69,8 @@ Resources:
           AttributeDataType: String
           Required: true
           Mutable: true
+      LambdaConfig:
+        PostConfirmation: !GetAtt PostConfirmationFunction.Arn
 
   UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
@@ -74,11 +79,26 @@ Resources:
       ClientName: !Sub ${AWS::StackName}-client
       GenerateSecret: false
       ExplicitAuthFlows:
-        - ALLOW_USER_PASSWORD_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
         - ALLOW_USER_SRP_AUTH
 
-  # DynamoDB Tables
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: admin
+      Description: Organisers who manage events, CFPs, speakers and bookings
+      UserPoolId: !Ref UserPool
+
+  SpeakerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: speaker
+      Description: Speakers who maintain a profile and submit to CFPs
+      UserPoolId: !Ref UserPool
+
+  # ---------------------------------------------------------------------------
+  # DynamoDB tables
+  # ---------------------------------------------------------------------------
   EventsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -87,200 +107,213 @@ Resources:
       AttributeDefinitions:
         - AttributeName: eventId
           AttributeType: S
-        - AttributeName: userId
+        - AttributeName: status
           AttributeType: S
-        - AttributeName: dateTime
+        - AttributeName: startDateTime
           AttributeType: S
       KeySchema:
         - AttributeName: eventId
           KeyType: HASH
       GlobalSecondaryIndexes:
-        - IndexName: UserEventsIndex
+        - IndexName: StatusDateIndex
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: startDateTime
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  SpeakersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${AWS::StackName}-speakers
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: speakerId
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: speakerId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
           KeySchema:
             - AttributeName: userId
               KeyType: HASH
-            - AttributeName: dateTime
-              KeyType: RANGE
           Projection:
             ProjectionType: ALL
 
-  UsersTable:
+  # Admin-only: marker and admin notes. Speaker-facing functions have no access.
+  SpeakerAdminTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub ${AWS::StackName}-users
+      TableName: !Sub ${AWS::StackName}-speaker-admin
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: userId
+        - AttributeName: speakerId
           AttributeType: S
       KeySchema:
-        - AttributeName: userId
+        - AttributeName: speakerId
           KeyType: HASH
 
-  ScheduledPostsTable:
+  CfpsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub ${AWS::StackName}-scheduled-posts
+      TableName: !Sub ${AWS::StackName}-cfps
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: postId
+        - AttributeName: cfpId
           AttributeType: S
-        - AttributeName: eventId
+        - AttributeName: status
           AttributeType: S
-        - AttributeName: scheduledTime
-          AttributeType: S
-      KeySchema:
-        - AttributeName: postId
-          KeyType: HASH
-      GlobalSecondaryIndexes:
-        - IndexName: EventPostsIndex
-          KeySchema:
-            - AttributeName: eventId
-              KeyType: HASH
-            - AttributeName: scheduledTime
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-
-  MessagesTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub ${AWS::StackName}-messages
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: messageId
-          AttributeType: S
-        - AttributeName: eventId
-          AttributeType: S
-        - AttributeName: scheduledTime
+        - AttributeName: closesAt
           AttributeType: S
       KeySchema:
-        - AttributeName: messageId
+        - AttributeName: cfpId
           KeyType: HASH
       GlobalSecondaryIndexes:
-        - IndexName: EventMessagesIndex
+        - IndexName: StatusIndex
           KeySchema:
-            - AttributeName: eventId
+            - AttributeName: status
               KeyType: HASH
-            - AttributeName: scheduledTime
+            - AttributeName: closesAt
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
 
-  NotificationsTable:
+  QuestionTemplatesTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub ${AWS::StackName}-notifications
+      TableName: !Sub ${AWS::StackName}-question-templates
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: notificationId
+        - AttributeName: templateId
           AttributeType: S
-        - AttributeName: userId
+      KeySchema:
+        - AttributeName: templateId
+          KeyType: HASH
+
+  SubmissionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${AWS::StackName}-submissions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: submissionId
+          AttributeType: S
+        - AttributeName: cfpId
+          AttributeType: S
+        - AttributeName: speakerId
           AttributeType: S
         - AttributeName: createdAt
           AttributeType: S
       KeySchema:
-        - AttributeName: notificationId
+        - AttributeName: submissionId
           KeyType: HASH
       GlobalSecondaryIndexes:
-        - IndexName: UserNotificationsIndex
+        - IndexName: CfpIndex
           KeySchema:
-            - AttributeName: userId
+            - AttributeName: cfpId
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: SpeakerIndex
+          KeySchema:
+            - AttributeName: speakerId
               KeyType: HASH
             - AttributeName: createdAt
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
 
-  SyncRecordsTable:
+  # Admin-only: ratings and review notes. Speaker-facing functions have no access.
+  SubmissionReviewsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub ${AWS::StackName}-sync-records
+      TableName: !Sub ${AWS::StackName}-submission-reviews
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: syncId
+        - AttributeName: submissionId
           AttributeType: S
-        - AttributeName: userId
-          AttributeType: S
-        - AttributeName: lastSyncTime
+        - AttributeName: adminUserId
           AttributeType: S
       KeySchema:
-        - AttributeName: syncId
+        - AttributeName: submissionId
           KeyType: HASH
-      GlobalSecondaryIndexes:
-        - IndexName: UserSyncIndex
-          KeySchema:
-            - AttributeName: userId
-              KeyType: HASH
-            - AttributeName: lastSyncTime
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
+        - AttributeName: adminUserId
+          KeyType: RANGE
 
-  SyncConflictsTable:
+  BookingsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub ${AWS::StackName}-sync-conflicts
+      TableName: !Sub ${AWS::StackName}-bookings
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: conflictId
+        - AttributeName: bookingId
           AttributeType: S
         - AttributeName: eventId
+          AttributeType: S
+        - AttributeName: speakerId
           AttributeType: S
         - AttributeName: createdAt
           AttributeType: S
       KeySchema:
-        - AttributeName: conflictId
+        - AttributeName: bookingId
           KeyType: HASH
       GlobalSecondaryIndexes:
-        - IndexName: EventConflictsIndex
+        - IndexName: EventIndex
           KeySchema:
             - AttributeName: eventId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: SpeakerIndex
+          KeySchema:
+            - AttributeName: speakerId
               KeyType: HASH
             - AttributeName: createdAt
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
 
-  # SQS Queue for scheduling
-  SchedulerQueue:
-    Type: AWS::SQS::Queue
+  # ---------------------------------------------------------------------------
+  # S3 (private headshots, accessed via presigned URLs only)
+  # ---------------------------------------------------------------------------
+  HeadshotsBucket:
+    Type: AWS::S3::Bucket
     Properties:
-      QueueName: !Sub ${AWS::StackName}-scheduler-queue
-      VisibilityTimeout: 300
-      MessageRetentionPeriod: 1209600  # 14 days
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - !Ref AllowedOrigin
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+            AllowedHeaders:
+              - '*'
+            MaxAge: 600
 
-  # EventBridge Rule for periodic sync
-  SyncScheduleRule:
-    Type: AWS::Events::Rule
-    Properties:
-      Name: !Sub ${AWS::StackName}-sync-schedule
-      Description: Periodic synchronization with external platforms
-      ScheduleExpression: rate(15 minutes)
-      State: ENABLED
-      Targets:
-        - Arn: !GetAtt SyncFunction.Arn
-          Id: SyncFunctionTarget
+  # ---------------------------------------------------------------------------
+  # Lambda functions
+  # ---------------------------------------------------------------------------
 
-  # EventBridge Rule for checking scheduled posts
-  PostScheduleRule:
-    Type: AWS::Events::Rule
-    Properties:
-      Name: !Sub ${AWS::StackName}-post-schedule
-      Description: Check for scheduled posts ready for execution
-      ScheduleExpression: rate(5 minutes)
-      State: ENABLED
-      Targets:
-        - Arn: !GetAtt SchedulerFunction.Arn
-          Id: SchedulerFunctionTarget
-          Input: !Sub |
-            {
-              "source": "eventpush.scheduler",
-              "detail-type": "Check Scheduled Posts",
-              "detail": {}
-            }
-
-  # Lambda Functions
-  AuthFunction:
+  # Cognito trigger: adds every self-signed-up user to the speaker group.
+  # The pool ARN is built from a wildcard to avoid a circular dependency with UserPool.
+  PostConfirmationFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: esbuild
@@ -288,34 +321,108 @@ Resources:
         Minify: true
         Target: es2020
         EntryPoints:
-          - handlers/auth.ts
+          - handlers/post-confirmation.ts
     Properties:
-      FunctionName: !Sub ${AWS::StackName}-auth
+      FunctionName: !Sub ${AWS::StackName}-post-confirmation
       CodeUri: src/
-      Handler: handlers/auth.handler
+      Handler: handlers/post-confirmation.handler
       Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminAddUserToGroup
+              Resource: !Sub arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*
+
+  PostConfirmationInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref PostConfirmationFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*
+
+  # /me identity, account deletion, admin user management
+  UsersFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+          - handlers/users.ts
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-users
+      CodeUri: src/
+      Handler: handlers/users.handler
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPool
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminCreateUser
+                - cognito-idp:AdminDeleteUser
+                - cognito-idp:AdminAddUserToGroup
+                - cognito-idp:AdminRemoveUserFromGroup
+                - cognito-idp:AdminListGroupsForUser
+                - cognito-idp:AdminGetUser
+                - cognito-idp:ListUsers
+                - cognito-idp:ListUsersInGroup
+              Resource: !GetAtt UserPool.Arn
+        # Account deletion (DELETE /me) removes the caller's data across tables.
         - DynamoDBCrudPolicy:
-            TableName: !Ref UsersTable
+            TableName: !Ref SpeakersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SpeakerAdminTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SubmissionsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SubmissionReviewsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BookingsTable
+        - S3CrudPolicy:
+            BucketName: !Ref HeadshotsBucket
       Events:
-        GetProfile:
+        GetMe:
           Type: Api
           Properties:
             RestApiId: !Ref ApiGateway
-            Path: /auth/profile
+            Path: /me
             Method: get
-        UpdateProfile:
+        DeleteMe:
           Type: Api
           Properties:
             RestApiId: !Ref ApiGateway
-            Path: /auth/profile
-            Method: put
-        Logout:
+            Path: /me
+            Method: delete
+        ListUsers:
           Type: Api
           Properties:
             RestApiId: !Ref ApiGateway
-            Path: /auth/logout
+            Path: /admin/users
+            Method: get
+        InviteUser:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/users/invite
+            Method: post
+        PromoteUser:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/users/{userId}/promote
+            Method: post
+        DemoteUser:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/users/{userId}/demote
             Method: post
 
+  # Admin event CRUD
   EventsFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -332,95 +439,43 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref EventsTable
+        # Event deletion cascades to bookings (CFPs are not tied to events)
         - DynamoDBCrudPolicy:
-            TableName: !Ref UsersTable
-        - SQSSendMessagePolicy:
-            QueueName: !GetAtt SchedulerQueue.QueueName
+            TableName: !Ref BookingsTable
       Events:
+        ListEvents:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/events
+            Method: get
         CreateEvent:
           Type: Api
           Properties:
             RestApiId: !Ref ApiGateway
-            Path: /events
+            Path: /admin/events
             Method: post
-        GetEvents:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /events
-            Method: get
         GetEvent:
           Type: Api
           Properties:
             RestApiId: !Ref ApiGateway
-            Path: /events/{id}
+            Path: /admin/events/{id}
             Method: get
         UpdateEvent:
           Type: Api
           Properties:
             RestApiId: !Ref ApiGateway
-            Path: /events/{id}
+            Path: /admin/events/{id}
             Method: put
         DeleteEvent:
           Type: Api
           Properties:
             RestApiId: !Ref ApiGateway
-            Path: /events/{id}
-            Method: delete
-        ConfirmEvent:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /events/{id}/confirm
-            Method: post
-        RejectEvent:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /events/{id}/reject
-            Method: post
-
-  SocialFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2020
-        EntryPoints:
-          - handlers/social.ts
-    Properties:
-      FunctionName: !Sub ${AWS::StackName}-social
-      CodeUri: src/
-      Handler: handlers/social.handler
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ScheduledPostsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref UsersTable
-        - SQSSendMessagePolicy:
-            QueueName: !GetAtt SchedulerQueue.QueueName
-      Events:
-        SchedulePosts:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /social/schedule
-            Method: post
-        GetPosts:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /social/posts
-            Method: get
-        CancelPost:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /social/posts/{id}
+            Path: /admin/events/{id}
             Method: delete
 
-  MessagingFunction:
+  # Speaker-facing profile. No access to SpeakerAdminTable or SubmissionReviewsTable.
+  SpeakersMeFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: esbuild
@@ -428,181 +483,38 @@ Resources:
         Minify: true
         Target: es2020
         EntryPoints:
-          - handlers/messaging.ts
+          - handlers/speakers-me.ts
     Properties:
-      FunctionName: !Sub ${AWS::StackName}-messaging
+      FunctionName: !Sub ${AWS::StackName}-speakers-me
       CodeUri: src/
-      Handler: handlers/messaging.handler
+      Handler: handlers/speakers-me.handler
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref MessagesTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref EventsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref UsersTable
-        - SQSSendMessagePolicy:
-            QueueName: !GetAtt SchedulerQueue.QueueName
+            TableName: !Ref SpeakersTable
+        - S3CrudPolicy:
+            BucketName: !Ref HeadshotsBucket
       Events:
-        ScheduleMessage:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /messages/schedule
-            Method: post
-        GetMessages:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /messages
-            Method: get
-        GetTemplates:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /messages/templates
-            Method: get
-        UpdateTemplates:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /messages/templates
-            Method: put
-        DeleteMessage:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /messages/{id}
-            Method: delete
-
-  NotificationFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2020
-        EntryPoints:
-          - handlers/notifications.ts
-    Properties:
-      FunctionName: !Sub ${AWS::StackName}-notifications
-      CodeUri: src/
-      Handler: handlers/notifications.handler
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref NotificationsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref UsersTable
-      Events:
-        GetNotifications:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /notifications
-            Method: get
-        UpdatePreferences:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /notifications/preferences
-            Method: put
-        GetPreferences:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /notifications/preferences
-            Method: get
-        MarkRead:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /notifications/{id}/read
-            Method: put
-
-  SyncFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2020
-        EntryPoints:
-          - handlers/sync.ts
-    Properties:
-      FunctionName: !Sub ${AWS::StackName}-sync
-      CodeUri: src/
-      Handler: handlers/sync.handler
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref EventsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref SyncRecordsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref SyncConflictsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref UsersTable
-      Events:
-        TriggerSync:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /events/sync
-            Method: post
-        GetSyncStatus:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /sync/status
-            Method: get
-        ResolveConflict:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /sync/resolve-conflict
-            Method: post
-
-  LinkedInFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2020
-        EntryPoints:
-          - handlers/linkedin.ts
-    Properties:
-      FunctionName: !Sub ${AWS::StackName}-linkedin
-      CodeUri: src/
-      Handler: handlers/linkedin.handler
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref UsersTable
-      Events:
-        Connect:
-          Type: Api
-          Properties:
-            RestApiId: !Ref ApiGateway
-            Path: /linkedin/connect
-            Method: post
         GetProfile:
           Type: Api
           Properties:
             RestApiId: !Ref ApiGateway
-            Path: /linkedin/profile
+            Path: /me/profile
             Method: get
-        GetOrganizations:
+        UpdateProfile:
           Type: Api
           Properties:
             RestApiId: !Ref ApiGateway
-            Path: /linkedin/organizations
-            Method: get
-        Disconnect:
+            Path: /me/profile
+            Method: put
+        HeadshotUrl:
           Type: Api
           Properties:
             RestApiId: !Ref ApiGateway
-            Path: /linkedin/disconnect
+            Path: /me/profile/headshot-url
             Method: post
 
-  SchedulerFunction:
+  # Admin speaker directory, markers and notes
+  SpeakersAdminFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: esbuild
@@ -610,26 +522,357 @@ Resources:
         Minify: true
         Target: es2020
         EntryPoints:
-          - handlers/scheduler.ts
+          - handlers/speakers-admin.ts
     Properties:
-      FunctionName: !Sub ${AWS::StackName}-scheduler
+      FunctionName: !Sub ${AWS::StackName}-speakers-admin
       CodeUri: src/
-      Handler: handlers/scheduler.handler
+      Handler: handlers/speakers-admin.handler
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPool
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref ScheduledPostsTable
+            TableName: !Ref SpeakersTable
         - DynamoDBCrudPolicy:
-            TableName: !Ref MessagesTable
-        - SQSPollerPolicy:
-            QueueName: !GetAtt SchedulerQueue.QueueName
+            TableName: !Ref SpeakerAdminTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref SubmissionsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref BookingsTable
+        # Admin headshot upload (presigned POST) and removal of replaced objects
+        - S3CrudPolicy:
+            BucketName: !Ref HeadshotsBucket
+        # Verify the account exists before linking a profile to it
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminGetUser
+              Resource: !GetAtt UserPool.Arn
       Events:
-        SQSEvent:
-          Type: SQS
+        ListSpeakers:
+          Type: Api
           Properties:
-            Queue: !GetAtt SchedulerQueue.Arn
-            BatchSize: 10
+            RestApiId: !Ref ApiGateway
+            Path: /admin/speakers
+            Method: get
+        CreateSpeaker:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/speakers
+            Method: post
+        GetSpeaker:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/speakers/{id}
+            Method: get
+        UpdateSpeaker:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/speakers/{id}
+            Method: put
+        SetMarker:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/speakers/{id}/marker
+            Method: put
+        SetNotes:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/speakers/{id}/notes
+            Method: put
+        LinkSpeaker:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/speakers/{id}/link
+            Method: post
+        SpeakerHeadshotUrl:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/speakers/{id}/headshot-url
+            Method: post
 
-  # CloudWatch Log Group for API Gateway
+  # CFP management (admin) and open CFP list/detail (speaker)
+  CfpsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+          - handlers/cfps.ts
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-cfps
+      CodeUri: src/
+      Handler: handlers/cfps.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CfpsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref QuestionTemplatesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref SubmissionsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref EventsTable
+      Events:
+        ListCfps:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/cfps
+            Method: get
+        CreateCfp:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/cfps
+            Method: post
+        GetCfp:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/cfps/{id}
+            Method: get
+        UpdateCfp:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/cfps/{id}
+            Method: put
+        DeleteCfp:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/cfps/{id}
+            Method: delete
+        DuplicateCfp:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/cfps/{id}/duplicate
+            Method: post
+        ReplaceQuestions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/cfps/{id}/questions
+            Method: put
+        ApplyTemplate:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/cfps/{id}/apply-template
+            Method: post
+        ListTemplates:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/templates
+            Method: get
+        CreateTemplate:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/templates
+            Method: post
+        DeleteTemplate:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/templates/{id}
+            Method: delete
+        ListOpenCfps:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /me/cfps
+            Method: get
+        GetOpenCfp:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /me/cfps/{id}
+            Method: get
+
+  # Speaker-facing submissions. No access to SpeakerAdminTable or SubmissionReviewsTable.
+  SubmissionsMeFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+          - handlers/submissions-me.ts
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-submissions-me
+      CodeUri: src/
+      Handler: handlers/submissions-me.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SubmissionsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref CfpsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref SpeakersTable
+      Events:
+        ListMySubmissions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /me/submissions
+            Method: get
+        CreateMySubmission:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /me/submissions
+            Method: post
+        GetMySubmission:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /me/submissions/{id}
+            Method: get
+        UpdateMySubmission:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /me/submissions/{id}
+            Method: put
+        WithdrawMySubmission:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /me/submissions/{id}
+            Method: delete
+        SubmitMySubmission:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /me/submissions/{id}/submit
+            Method: post
+
+  # Admin review of submissions, ratings and status changes
+  SubmissionsAdminFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+          - handlers/submissions-admin.ts
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-submissions-admin
+      CodeUri: src/
+      Handler: handlers/submissions-admin.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SubmissionsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SubmissionReviewsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref CfpsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref SpeakersTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref SpeakerAdminTable
+      Events:
+        ListCfpSubmissions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/cfps/{id}/submissions
+            Method: get
+        GetSubmission:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/submissions/{id}
+            Method: get
+        SetSubmissionStatus:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/submissions/{id}/status
+            Method: put
+        SetSubmissionReview:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/submissions/{id}/review
+            Method: put
+
+  # Admin bookings and the speaker's confirmed-only view
+  BookingsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints:
+          - handlers/bookings.ts
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-bookings
+      CodeUri: src/
+      Handler: handlers/bookings.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BookingsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref EventsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref SpeakersTable
+        # Validates that a booking's submissionId exists and belongs to the speaker
+        - DynamoDBReadPolicy:
+            TableName: !Ref SubmissionsTable
+        # Needed for the SPEAKER_NOT_AGAIN warning on admin booking creation
+        - DynamoDBReadPolicy:
+            TableName: !Ref SpeakerAdminTable
+      Events:
+        ListBookings:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/bookings
+            Method: get
+        CreateBooking:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/bookings
+            Method: post
+        UpdateBooking:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/bookings/{id}
+            Method: put
+        DeleteBooking:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /admin/bookings/{id}
+            Method: delete
+        ListMyBookings:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /me/bookings
+            Method: get
+
+  # ---------------------------------------------------------------------------
+  # API Gateway
+  # ---------------------------------------------------------------------------
   ApiGatewayLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -656,7 +899,6 @@ Resources:
     Properties:
       CloudWatchRoleArn: !GetAtt ApiGatewayLoggingRole.Arn
 
-  # API Gateway
   ApiGateway:
     Type: AWS::Serverless::Api
     Properties:
@@ -675,20 +917,20 @@ Resources:
         Format: '{"requestId":"$context.requestId","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath","status":"$context.status","error.message":"$context.error.message","error.messageString":"$context.error.messageString","authorizer.error":"$context.authorizer.error","authorizer.status":"$context.authorizer.status","integration.error":"$context.integration.error","integration.status":"$context.integration.status","responseLength":"$context.responseLength","responseTime":"$context.responseTime","sourceIp":"$context.identity.sourceIp","userAgent":"$context.identity.userAgent"}'
       Cors:
         AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
-        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Access-Control-Allow-Origin'"
-        AllowOrigin: "'*'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: !Sub "'${AllowedOrigin}'"
         AllowCredentials: false
         MaxAge: "'600'"
       GatewayResponses:
         DEFAULT_4XX:
           ResponseParameters:
             Headers:
-              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Origin: !Sub "'${AllowedOrigin}'"
               Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
         DEFAULT_5XX:
           ResponseParameters:
             Headers:
-              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Origin: !Sub "'${AllowedOrigin}'"
               Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
@@ -696,23 +938,6 @@ Resources:
         Authorizers:
           CognitoAuthorizer:
             UserPoolArn: !GetAtt UserPool.Arn
-
-  # Lambda Permissions for EventBridge
-  SyncFunctionPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref SyncFunction
-      Action: lambda:InvokeFunction
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt SyncScheduleRule.Arn
-
-  PostScheduleFunctionPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref SchedulerFunction
-      Action: lambda:InvokeFunction
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt PostScheduleRule.Arn
 
 Outputs:
   ApiGatewayUrl:
@@ -733,8 +958,8 @@ Outputs:
     Export:
       Name: !Sub ${AWS::StackName}-user-pool-client-id
 
-  EventsTableName:
-    Description: Events DynamoDB table name
-    Value: !Ref EventsTable
+  HeadshotsBucketName:
+    Description: Private S3 bucket for speaker headshots
+    Value: !Ref HeadshotsBucket
     Export:
-      Name: !Sub ${AWS::StackName}-events-table
+      Name: !Sub ${AWS::StackName}-headshots-bucket

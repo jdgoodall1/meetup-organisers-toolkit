@@ -1,0 +1,207 @@
+# Implementation Plan
+
+Tasks marked with `*` are optional test tasks and can be skipped for a faster path. Each task builds on the previous ones, and the build should pass at the end of every top-level task.
+
+- [x] 1. Remove legacy Meetup/LinkedIn code and set up the product name
+  - [x] 1.1 Delete legacy backend code
+    - Delete `src/handlers/{linkedin,messaging,notifications,scheduler,social,sync}.ts`
+    - Delete `src/shared/{linkedin-client,meetup-client,messaging-service,notification-service,social-media-service,sync-service,event-service}.ts`
+    - Delete legacy tests in `tests/` (linkedin, meetup, messaging, notifications, rejection, social-media, sync, api-endpoints) and compiled artefacts (`*.js`, `*.d.ts`, `*.map`) and add them to `.gitignore`
+    - Prune `src/package.json` of unused dependencies (e.g. `axios`, `@aws-sdk/client-eventbridge`, `@aws-sdk/client-sqs`)
+    - _Requirements: 13.1, 13.2, 13.3_
+  - [x] 1.2 Delete legacy frontend code
+    - Delete `LinkedInAuth`, `LinkedInCallback`, `SocialMediaScheduler`, `MessagingCenter`, `NotificationCenter`, `Dashboard`, old `EventForm`, `EventList`, `Navigation`, `services/mockData.ts` and their tests
+    - Remove `/auth/linkedin/callback` route from `App.tsx`
+    - Strip LinkedIn content from `frontend/README-AUTH.md`
+    - _Requirements: 13.1, 13.3_
+  - [x] 1.3 Add single-source product name
+    - Create `frontend/src/config/app.ts` exporting `APP_NAME` (placeholder value, e.g. "Speaker Toolkit")
+    - Add a Vite `transformIndexHtml` plugin in `vite.config.ts` that sets `<title>` from `APP_NAME`
+    - Replace hard-coded product names in `Login.tsx`, `index.html`, and layout with `APP_NAME`
+    - Rename `eventpush-*` package names to neutral placeholders
+    - _Requirements: 12.1, 12.2, 12.3, 12.4_
+  - [x] 1.4 Check with the user before deleting `landing/`, `BLOG-POST.md`, `BUGS.md`, and the old `.kiro/specs/logimeet` spec; delete those the user confirms
+    - _Requirements: 13.1_
+  - [x] 1.5 Confirm the frontend and backend still compile and lint
+    - _Requirements: 13.4_
+
+- [x] 2. Rework infrastructure template
+  - [x] 2.1 Strip legacy resources from `template.yaml`
+    - Remove legacy tables, SQS queue, EventBridge rules, legacy functions and permissions, LinkedIn parameters and env vars, and the legacy outputs
+    - _Requirements: 13.2_
+  - [x] 2.2 Add Cognito groups and post-confirmation trigger
+    - Add `admin` and `speaker` `AWS::Cognito::UserPoolGroup`s
+    - Add the `post-confirmation` Lambda and wire it in the user pool `LambdaConfig` with invoke permission
+    - Remove `ALLOW_USER_PASSWORD_AUTH` from the client
+    - Add `AllowedOrigin` parameter and use it for CORS
+    - _Requirements: 1.1, 1.2, 1.3_
+  - [x] 2.3 Add DynamoDB tables and S3 bucket
+    - `EventsTable`, `SpeakersTable`, `SpeakerAdminTable`, `CfpsTable`, `QuestionTemplatesTable`, `SubmissionsTable`, `SubmissionReviewsTable`, `BookingsTable` with the indexes in the design
+    - Private `HeadshotsBucket` with public access blocked and CORS for presigned uploads
+    - _Requirements: 3.5, 11.4_
+  - [x] 2.4 Define Lambda functions and API routes
+    - Functions: `users`, `events`, `speakers-me`, `speakers-admin`, `cfps`, `submissions-me`, `submissions-admin`, `bookings`
+    - Least-privilege policies: `*-me` functions get no access to `SpeakerAdminTable` or `SubmissionReviewsTable`
+    - Wire all routes from the API table in the design behind the Cognito authorizer
+    - _Requirements: 11.1, 11.2_
+  - [x] 2.5 Update `tests/infrastructure.test.ts` to assert no legacy resources remain and that `*-me` functions lack policies on admin-only tables
+    - _Requirements: 13.2, 5.4_
+
+- [x] 3. Backend foundations
+  - [x] 3.1 Define models in `src/shared/models.ts`
+    - Event, Speaker, SpeakerAdmin, Cfp, CfpQuestion, QuestionTemplate, Submission, SubmissionReview, Booking, plus status and type unions
+    - _Requirements: 2, 3, 5, 6, 7, 8, 9, 10_
+  - [x] 3.2 Implement `shared/http.ts`
+    - Response helpers, error classes (`ValidationError`, `NotFound`, `Forbidden`, `ConfirmRequired`, `Conflict`), JSON body parsing, uniform error body, small route matcher
+    - _Requirements: 11.3_
+  - [x] 3.3 Rewrite `shared/auth.ts`
+    - Read identity and groups only from `requestContext.authorizer.claims`
+    - `requireAdmin`, `requireSpeaker`; return 403 on mismatch
+    - _Requirements: 1.7, 1.9, 11.1_
+  - [x] 3.4 Unit tests for `requireAdmin` and `requireSpeaker` including spoofed role in body or headers
+    - _Requirements: 1.7, 1.9_
+  - [x] 3.5 Implement `shared/validation.ts` pure validators
+    - Event (title/date required, end >= start), CFP (close > open), question (type, options >= 2 for selects), speaker profile (name/bio), headshot (type/size)
+    - _Requirements: 2.6, 2.7, 3.4, 3.5, 6.4, 7.3_
+  - [x] 3.6 Implement CFP and submission logic in `shared/cfp-logic.ts`
+    - `effectiveStatus(cfp, now)`, `validateSubmission(cfp, input, mode)`, `toSpeakerStatus(status)`
+    - _Requirements: 6.5, 7.10, 8.1, 8.5, 8.6, 8.7, 8.12_
+  - [x] 3.7 Unit and property tests for validators and `cfp-logic`
+    - Select answers outside options are always rejected; unknown question IDs rejected; speaker status mapping never reveals `shortlisted`
+    - _Requirements: 8.5, 8.6, 8.12_
+  - [x] 3.8 Implement repos in `shared/repos/` for each table
+    - Include audit fields (`createdBy`, `updatedBy`, timestamps) on every write and conditional `updatedAt` checks on submissions and CFPs
+    - _Requirements: 11.6_
+
+- [x] 4. Users and roles
+  - [x] 4.1 Implement `post-confirmation` handler that adds the new user to the `speaker` group
+    - _Requirements: 1.2, 1.3_
+  - [x] 4.2 Implement `users` handler
+    - `GET /me`, `GET /admin/users`, `POST /admin/users/invite`, `POST /admin/users/{id}/promote`, `POST /admin/users/{id}/demote` (block self-demotion)
+    - _Requirements: 1.4, 1.5_
+  - [x] 4.3 Document first-admin bootstrap command in `DEPLOYMENT.md`
+    - _Requirements: 1.4, 13.5_
+
+- [x] 5. Events and calendar (backend)
+  - [x] 5.1 Implement `events` handler: admin CRUD with validation, status and date-range filters
+    - _Requirements: 2.1, 2.2, 2.3, 2.5, 2.6, 2.7_
+  - [x] 5.2 Implement confirmation flow and cascade on delete
+    - `409 CONFIRM_REQUIRED` when bookings exist; delete bookings and unlink CFP on confirmed delete
+    - _Requirements: 2.8, 2.9_
+
+- [x] 6. Speaker profiles, directory and marker (backend)
+  - [x] 6.1 Implement `speakers-me` handler
+    - `GET`/`PUT /me/profile` with validation, `POST /me/profile/headshot-url` presigned upload with type and size limits, signed GET URLs in responses
+    - _Requirements: 3.1, 3.3, 3.4, 3.5, 11.4_
+  - [x] 6.2 Implement `speakers-admin` handler
+    - Directory with search and filters (name/text, topic, location, marker); detail including marker, notes, submissions and bookings history; create on behalf of someone; edit any profile; link to an account
+    - _Requirements: 3.6, 3.7, 3.8, 4.1, 4.2, 4.3, 4.4_
+  - [x] 6.3 Implement marker and admin notes endpoints
+    - Record `markerChangedBy` and `markerChangedAt` in the same write; marker note supported
+    - _Requirements: 5.1, 5.2, 5.3_
+  - [x] 6.4 Property test that speaker-facing handlers never return marker, notes or review fields
+    - _Requirements: 5.4, 8.12_
+  - [x] 6.5 Implement account deletion `DELETE /me`
+    - Idempotent ordered steps; anonymise bookings; delete Cognito user last
+    - _Requirements: 11.5_
+
+- [x] 7. CFPs and questions (backend)
+  - [x] 7.1 Implement `cfps` handler admin CRUD, close/reopen, event link, and duplicate
+    - `409 CONFIRM_REQUIRED` for deleting a CFP with submissions
+    - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.6, 6.7, 6.8_
+  - [x] 7.2 Implement question list endpoint `PUT /admin/cfps/{id}/questions`
+    - Validate types, options and ordering; warn before removing or retyping a question when submissions exist
+    - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.8_
+  - [x] 7.3 Implement templates
+    - Create, list, delete; apply template deep-copies questions with new IDs
+    - _Requirements: 7.6, 7.7_
+  - [x] 7.4 Unit test that editing a template after applying it does not alter the CFP
+    - _Requirements: 7.7_
+  - [x] 7.5 Implement speaker CFP endpoints `GET /me/cfps` and `GET /me/cfps/{id}`
+    - List only effectively open CFPs; never return drafts
+    - _Requirements: 8.1, 8.2, 8.3_
+
+- [x] 8. Submissions and review (backend)
+  - [x] 8.1 Implement `submissions-me` handler
+    - Create/edit draft, submit, withdraw, list own, get own; require a profile; enforce `effectiveStatus` and edit-lock rules; snapshot question label/type into answers; foreign IDs return 404
+    - _Requirements: 8.4, 8.5, 8.6, 8.7, 8.8, 8.9, 8.10, 8.11, 8.12, 7.9, 11.2_
+  - [x] 8.2 Implement `submissions-admin` handler
+    - List by CFP with status filter and exclusion of drafts by default; detail with profile summary, marker and answers; status changes; per-admin rating and notes with average on read
+    - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 5.6, 5.8_
+  - [x] 8.3 Handler tests that every `/admin/*` route returns 403 for speaker tokens and every `/me/*` route rejects other speakers' resources
+    - _Requirements: 1.7, 11.1, 11.2_
+
+- [x] 9. Bookings (backend)
+  - [x] 9.1 Implement overlap detection and warning generation in `shared/booking-logic.ts`
+    - Codes `SPEAKER_NOT_AGAIN`, `DUPLICATE_BOOKING`, `OVERLAPPING_EVENT`
+    - _Requirements: 5.5, 5.7, 10.5, 10.6_
+  - [x] 9.2 Property test that overlap detection is symmetric and that adjacent events do not overlap
+    - _Requirements: 10.6_
+  - [x] 9.3 Implement `bookings` handler
+    - Admin CRUD with `confirmWarnings`; list by event and by speaker; speaker `GET /me/bookings` returns confirmed only
+    - _Requirements: 10.1, 10.2, 10.3, 10.7, 10.8, 10.9_
+
+- [x] 10. Checkpoint: backend
+  - Build the backend with esbuild/tsc, run the remaining tests, and ask the user if anything needs adjusting.
+
+- [x] 11. Frontend foundations
+  - [x] 11.1 Update `AuthContext` to expose `role` from ID token groups, with admin taking precedence
+    - Support `forceRefresh` after role changes; remove hard-coded redirects to `/dashboard` in favour of role routing
+    - _Requirements: 1.6, 1.9_
+  - [x] 11.2 Add `RequireRole` route guard and `Layout` with role-aware navigation using `APP_NAME`
+    - _Requirements: 1.6, 1.7, 12.2_
+  - [x] 11.3 Rewrite `services/api.ts` as a typed client
+    - Attaches `Authorization`, maps `{ error: { code, message, fields } }` and `409` warnings to typed results
+    - _Requirements: 11.3_
+  - [x] 11.4 Rewrite `App.tsx` routes
+    - `/login`, `/admin/*`, `/speaker/*`, and a root redirect by role
+    - _Requirements: 1.6_
+  - [x] 11.5 Tests for `RequireRole` redirects and role routing
+    - _Requirements: 1.6, 1.7_
+
+- [x] 12. Admin UI: events, speakers, marker
+  - [x] 12.1 Build `EventCalendar` (month grid) and list view with status and date filters, plus `EventForm`
+    - _Requirements: 2.1, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8_
+  - [x] 12.2 Build `SpeakerDirectory` with search, topic/location/marker filters and badges
+    - _Requirements: 4.1, 4.2, 4.3, 5.8_
+  - [x] 12.3 Build `SpeakerDetail` with profile, marker control (Have back / Not again / None, note), admin notes, and submission and booking history; admin-created profile form and link-to-account
+    - _Requirements: 3.7, 3.8, 4.4, 5.1, 5.2_
+  - [x] 12.4 Build `UserAdmin` for invite, promote and demote
+    - _Requirements: 1.4, 1.5_
+
+- [x] 13. Admin UI: CFPs, questions, review, bookings
+  - [x] 13.1 Build `CfpList` and `CfpForm` including close/reopen, duplicate and event link
+    - _Requirements: 6.1, 6.3, 6.6, 6.8_
+  - [x] 13.2 Build `QuestionBuilder`
+    - Add/edit/delete/reorder via buttons, type-specific option editor, required toggle, help text, confirmation on `CONFIRM_REQUIRED`, and `TemplateManager` to save and apply templates
+    - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.8_
+  - [x] 13.3 Component tests for `QuestionBuilder` add, reorder, and option validation
+    - _Requirements: 7.1, 7.3_
+  - [x] 13.4 Build `SubmissionList` and `SubmissionReview`
+    - Status filter, marker badges (including a text label for `not_again`), rating and notes, status change, offer to create a booking on accept for CFPs linked to an event
+    - _Requirements: 9.1, 9.3, 9.4, 9.5, 9.7, 5.6, 5.8, 10.4_
+  - [x] 13.5 Build `BookingPanel` on the event page
+    - Show bookings and linked CFP submissions; handle warning confirmations and resubmit with `confirmWarnings`
+    - _Requirements: 10.1, 10.3, 10.4, 10.5, 10.6, 5.5, 5.7_
+
+- [x] 14. Speaker UI
+  - [x] 14.1 Build `ProfileForm` with headshot upload and a first-login prompt
+    - _Requirements: 3.1, 3.2, 3.4, 3.5_
+  - [x] 14.2 Build `OpenCfps` and `SubmissionForm` rendered dynamically from the question list
+    - Save draft, submit, per-field errors, focus on first error, multiple talks per CFP, blocked without a profile
+    - _Requirements: 8.1, 8.3, 8.4, 8.5, 8.8, 8.9_
+  - [x] 14.3 Build `MySubmissions` (edit, withdraw, simplified status) and `MyBookings`
+    - _Requirements: 8.10, 8.11, 8.12, 10.8_
+  - [x] 14.4 Component tests for `SubmissionForm` required-field handling and select-option rendering
+    - _Requirements: 8.5_
+  - [x] 14.5 Add account deletion option with confirmation
+    - _Requirements: 11.5_
+
+- [x] 15. Documentation and final verification
+  - [x] 15.1 Rewrite `README.md`, `DEPLOYMENT.md` and `frontend/README.md` for the CFP and speaker toolkit; update `amplify.yml` if needed
+    - _Requirements: 13.5_
+  - [x] 15.2 Add a frontend test that `APP_NAME` is the only source of the product name
+    - _Requirements: 12.1, 12.4_
+  - [x] 15.3 Final checkpoint
+    - Run backend and frontend build, lint and tests; search the repo for leftover references to LinkedIn, Meetup, `eventpush`, sync and scheduler; report any gaps to the user
+    - _Requirements: 13.1, 13.2, 13.4_

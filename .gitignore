@@ -41,3 +41,11 @@ coverage/
 # Runtime
 .serverless/
 .webpack/
+
+# Compiled TypeScript artefacts (backend src and tests)
+src/**/*.js
+src/**/*.d.ts
+src/**/*.map
+tests/**/*.js
+tests/**/*.d.ts
+tests/**/*.map

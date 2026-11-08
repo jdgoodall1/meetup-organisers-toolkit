@@ -1,63 +1,66 @@
-# EventPush Frontend
+# Speaker Toolkit Frontend
 
-EventPush is a comprehensive meetup management platform built with React, TypeScript, and Vite. This frontend provides an intuitive interface for managing events, social media scheduling, messaging, and notifications.
+React 18, TypeScript and Vite frontend for the CFP and speaker toolkit. It has two areas, chosen by Cognito group: an admin area for organisers and a speaker area for people submitting talks.
 
-## Features
+The product name comes from `APP_NAME` in `src/config/app.ts`. Change it there only. `vite.config.ts` also uses it to set the page title.
 
-- **Event Management**: Create, edit, and manage meetup events
-- **Social Media Integration**: Schedule automated LinkedIn posts
-- **Messaging System**: Send targeted messages to attendees and group members
-- **Notification Center**: Stay informed about platform activities
-- **Mock Authentication**: Development-ready authentication system
+## Routes
 
-## Tech Stack
+Admin (`src/routes/adminRoutes.tsx`, under `/admin`): events and calendar, speaker directory and detail, CFP list and editor (questions, templates), submissions list and review, bookings, user administration.
 
-- React 18 with TypeScript
-- Vite for fast development and building
-- Jest for testing
-- ESLint for code quality
+Speaker (`src/routes/speakerRoutes.tsx`, under `/speaker`): profile and headshot, open CFPs, submission form, my submissions, my bookings, account deletion.
 
-## Getting Started
+`RequireRole` guards each area. Users in neither group, or signed out, are sent to the login page.
 
-1. Install dependencies:
+## Layout
+
+```
+src/
+├── components/
+│   ├── admin/      # Organiser screens
+│   ├── speaker/    # Speaker screens
+│   ├── common/     # Layout, ConfirmDialog, RequireRole
+│   └── __tests__/
+├── config/         # app.ts (APP_NAME), env.ts (API_BASE_URL)
+├── contexts/       # AuthContext
+├── routes/         # adminRoutes, speakerRoutes
+├── services/       # api.ts, apiTypes.ts
+├── utils/          # roles, question and answer helpers, status helpers
+└── aws-config.ts   # Amplify / Cognito configuration
+```
+
+## Setup
+
 ```bash
 npm install
+cp .env.example .env.local
+npm run dev        # http://localhost:3000
 ```
 
-2. Start the development server:
-```bash
-npm run dev
-```
+Set these in `.env.local` (values come from the SAM stack outputs):
 
-3. Run tests:
-```bash
-npm test
-```
+| Variable | Description |
+|----------|-------------|
+| `VITE_USER_POOL_ID` | Cognito user pool ID |
+| `VITE_USER_POOL_CLIENT_ID` | Cognito app client ID |
+| `VITE_API_ENDPOINT` | API Gateway URL |
+| `VITE_AWS_REGION` | AWS region |
 
-## Development
+## Scripts
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+| Command | What it does |
+|---------|--------------|
+| `npm run dev` | Start the Vite dev server |
+| `npm run build` | Type check (`tsc`) and build to `dist/` |
+| `npm run preview` | Serve the production build locally |
+| `npm run lint` | ESLint, fails on warnings |
+| `npm test` | Run Jest tests |
+| `npm run test:watch` | Jest in watch mode |
 
-Currently, two official plugins are available:
+## Auth
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Sign-in uses Amplify with Cognito. See [README-AUTH.md](README-AUTH.md) for the auth setup. The first admin is created from the CLI, see the root [DEPLOYMENT.md](../DEPLOYMENT.md).
 
-## Expanding the ESLint configuration
+## Hosting
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
-
-- Configure the top-level `parserOptions` property like this:
-
-```js
-   parserOptions: {
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-    project: ['./tsconfig.json', './tsconfig.node.json'],
-    tsconfigRootDir: __dirname,
-   },
-```
-
-- Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`
-- Optionally add `plugin:@typescript-eslint/stylistic-type-checked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and add `plugin:react/recommended` & `plugin:react/jsx-runtime` to the `extends` list
+Amplify builds from the root `amplify.yml` (app root `frontend`). `customHttp.yml` sets security headers and `public/_redirects` handles SPA routing.

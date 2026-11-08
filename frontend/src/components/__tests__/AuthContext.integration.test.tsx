@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { AuthProvider } from '../../contexts/AuthContext';
 import Login from '../Login';
+import { APP_NAME } from '../../config/app';
 
 // Mock AWS Amplify
 jest.mock('aws-amplify/auth', () => ({
@@ -107,7 +108,7 @@ describe('Authentication Integration', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('EventPush')).toBeInTheDocument();
+      expect(screen.getByText(APP_NAME)).toBeInTheDocument();
     });
   });
 });

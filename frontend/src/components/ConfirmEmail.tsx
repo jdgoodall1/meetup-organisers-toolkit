@@ -130,20 +130,22 @@ const ConfirmEmail: React.FC<ConfirmEmailProps> = ({ email, onBack, onSuccess, o
   return (
     <div className="confirm-email-container">
       <div className="confirm-email-form">
-        <h2>Confirm Your Email</h2>
+        <p className="help-text"><strong>Step 2 of 2</strong></p>
+        <h2>Check your email</h2>
         {localEmail ? (
           <p>
-            We've sent a 6-digit confirmation code to:
+            We've emailed a 6-digit code to:
             <br />
             <strong>{localEmail}</strong>
           </p>
         ) : (
           <p>
-            Enter your email address and the 6-digit confirmation code sent to your inbox.
+            Enter your email address and the 6-digit code we emailed you.
           </p>
         )}
         <p className="help-text">
-          Please check your email (including spam folder) and enter the code below.
+          Copy the code from that email and paste it below to finish creating your account.
+          It can take a minute to arrive, and it may land in your spam folder.
         </p>
         
         <form onSubmit={handleConfirmation}>
@@ -163,7 +165,7 @@ const ConfirmEmail: React.FC<ConfirmEmailProps> = ({ email, onBack, onSuccess, o
           )}
           
           <div className="form-group">
-            <label htmlFor="confirmationCode">Confirmation Code:</label>
+            <label htmlFor="confirmationCode">6-digit code from your email:</label>
             <input
               type="text"
               id="confirmationCode"

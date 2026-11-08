@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import ConfirmEmail from './ConfirmEmail';
+import { APP_NAME } from '../config/app';
+import { PASSWORD_RULES, getUnmetPasswordRules } from '../utils/password';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
+  const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
   const [mode, setMode] = useState<'login' | 'signup' | 'confirm'>('login');
   const [isAutoLoggingIn, setIsAutoLoggingIn] = useState(false);
   const { login, signup, loading } = useAuth();
@@ -25,6 +28,13 @@ const Login: React.FC = () => {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    const unmet = getUnmetPasswordRules(password);
+    if (unmet.length > 0) {
+      setPasswordErrors(unmet.map((rule) => rule.message));
+      return;
+    }
+    setPasswordErrors([]);
     
     try {
       await signup(email, password, name);
@@ -54,9 +64,11 @@ const Login: React.FC = () => {
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        // Exponential backoff: 2s, 4s, 8s
-        const delay = baseDelay * Math.pow(2, attempt - 1);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        // Sign in straight away; only back off (2s, 4s) if Cognito hasn't caught up yet
+        if (attempt > 1) {
+          const delay = baseDelay * Math.pow(2, attempt - 2);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
         
         await login(email, password);
         setIsAutoLoggingIn(false);
@@ -90,7 +102,7 @@ const Login: React.FC = () => {
     return (
       <div className="login-container">
         <div className="login-form">
-          <h1>EventPush</h1>
+          <h1>{APP_NAME}</h1>
           <div className="loading-screen">
             <div className="loading-spinner"></div>
             <p>Signing you in...</p>
@@ -116,7 +128,7 @@ const Login: React.FC = () => {
   return (
     <div className="login-container">
       <div className="login-form">
-        <h1>EventPush</h1>
+        <h1>{APP_NAME}</h1>
         <p>
           {mode === 'login' && 'Sign in to manage your events'}
           {mode === 'signup' && 'Create your account'}
@@ -215,14 +227,44 @@ const Login: React.FC = () => {
                 type="password"
                 id="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (passwordErrors.length > 0) {
+                    setPasswordErrors(getUnmetPasswordRules(e.target.value).map((r) => r.message));
+                  }
+                }}
                 required
-                placeholder="Enter your password (min 8 characters)"
-                minLength={8}
+                placeholder="Enter your password"
+                aria-invalid={passwordErrors.length > 0}
+                aria-describedby={
+                  passwordErrors.length > 0
+                    ? 'password-requirements password-errors'
+                    : 'password-requirements'
+                }
               />
+              <ul id="password-requirements" className="help-text password-requirements">
+                {PASSWORD_RULES.map((rule) => (
+                  <li key={rule.id} data-testid={`password-rule-${rule.id}`}>
+                    {rule.test(password) ? '✓ Met: ' : '✗ Required: '}
+                    {rule.label}
+                  </li>
+                ))}
+              </ul>
+              {passwordErrors.length > 0 && (
+                <div id="password-errors" role="alert" className="error-message">
+                  {passwordErrors.map((message) => (
+                    <div key={message}>{message}</div>
+                  ))}
+                </div>
+              )}
             </div>
             
             {error && <div className="error-message">{error}</div>}
+
+            <p className="help-text signup-next-step">
+              <strong>Step 1 of 2.</strong> Next, we'll email a 6-digit code to the address
+              above. You'll enter it on the following screen to finish creating your account.
+            </p>
             
             <button type="submit" disabled={loading}>
               {loading ? 'Creating Account...' : 'Create Account'}

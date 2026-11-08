@@ -1,202 +1,77 @@
-// Authentication service and JWT token validation
+// Authorisation helpers.
+// Identity and roles are read ONLY from the Cognito authorizer claims in
+// `requestContext.authorizer.claims`. Request bodies, headers and query
+// strings are never consulted for identity or role.
 
-import jwt from 'jsonwebtoken';
-import { APIGatewayProxyEvent } from 'aws-lambda';
-import { cognitoClient } from './aws-clients';
-import { GetUserCommand, AdminGetUserCommand } from '@aws-sdk/client-cognito-identity-provider';
-import { config } from './config';
-import { UserProfile } from './types';
-import { dynamoDocClient } from './aws-clients';
-import { PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
-import { v4 as uuidv4 } from 'uuid';
+import { Forbidden, Unauthorized } from './http';
 
-export interface AuthenticatedUser {
+export type Role = 'admin' | 'speaker';
+
+export interface AuthContext {
   userId: string;
   email: string;
-  name: string;
+  groups: string[];
 }
 
-export interface JWTPayload {
-  sub: string;
-  email: string;
-  name?: string;
-  'cognito:username': string;
-  aud: string;
-  iss: string;
-  exp: number;
-  iat: number;
+/** Minimal event shape so this works with any API Gateway proxy event. */
+export interface EventWithClaims {
+  requestContext?: {
+    authorizer?: { claims?: Record<string, unknown> | null } | null;
+  } | null;
 }
 
 /**
- * Validates JWT token from Cognito and extracts user information
+ * Normalise `cognito:groups`. API Gateway may deliver an array, a JSON array
+ * string, "[admin speaker]" (space separated, bracketed) or "admin,speaker".
  */
-export async function validateToken(token: string): Promise<AuthenticatedUser> {
-  try {
-    // Decode token without verification first to get the payload
-    const decoded = jwt.decode(token) as JWTPayload;
-    
-    if (!decoded || !decoded.sub || !decoded.email) {
-      throw new Error('Invalid token payload');
-    }
-
-    // In a real implementation, you would verify the JWT signature
-    // against Cognito's public keys. For now, we'll do basic validation
-    if (decoded.exp < Date.now() / 1000) {
-      throw new Error('Token expired');
-    }
-
-    if (decoded.aud !== config.cognito.userPoolClientId) {
-      throw new Error('Invalid token audience');
-    }
-
-    return {
-      userId: decoded.sub,
-      email: decoded.email,
-      name: decoded.name || decoded.email.split('@')[0],
-    };
-  } catch (error) {
-    throw new Error(`Token validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-}
-
-/**
- * Extracts and validates authentication from API Gateway event.
- * When behind a Cognito authorizer, user info is in requestContext.authorizer.claims.
- * Falls back to manual JWT validation for direct invocations.
- */
-export async function extractAuthFromEvent(event: APIGatewayProxyEvent): Promise<AuthenticatedUser> {
-  // First, try to get user info from Cognito authorizer claims (API Gateway path)
-  const claims = event.requestContext?.authorizer?.claims;
-  if (claims && claims.sub) {
-    return {
-      userId: claims.sub,
-      email: claims.email || claims['cognito:username'] || '',
-      name: claims.name || claims.email?.split('@')[0] || 'User',
-    };
-  }
-
-  // Fallback: manual JWT validation (for direct Lambda invocations or testing)
-  const authHeader = event.headers?.Authorization || event.headers?.authorization;
-  
-  if (!authHeader) {
-    throw new Error('No authorization header provided');
-  }
-
-  const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader;
-  return await validateToken(token);
-}
-
-/**
- * Creates or updates user profile in DynamoDB
- */
-export async function createOrUpdateUserProfile(authenticatedUser: AuthenticatedUser): Promise<UserProfile> {
-  const now = new Date();
-  
-  // Check if user already exists
-  const existingUser = await getUserProfile(authenticatedUser.userId);
-  
-  if (existingUser) {
-    // Update existing user
-    const updatedUser: UserProfile = {
-      ...existingUser,
-      email: authenticatedUser.email,
-      name: authenticatedUser.name,
-      updatedAt: now,
-    };
-
-    await dynamoDocClient.send(new PutCommand({
-      TableName: config.tables.users,
-      Item: {
-        ...updatedUser,
-        lastSyncTime: updatedUser.lastSyncTime instanceof Date ? updatedUser.lastSyncTime.toISOString() : updatedUser.lastSyncTime,
-        createdAt: updatedUser.createdAt instanceof Date ? updatedUser.createdAt.toISOString() : updatedUser.createdAt,
-        updatedAt: now.toISOString(),
-      },
-    }));
-
-    return updatedUser;
+export function parseGroups(raw: unknown): string[] {
+  let items: unknown[];
+  if (Array.isArray(raw)) {
+    items = raw;
+  } else if (typeof raw === 'string') {
+    items = raw
+      .trim()
+      .replace(/^\[/, '')
+      .replace(/\]$/, '')
+      .split(/[\s,]+/);
   } else {
-    // Create new user
-    const newUser: UserProfile = {
-      userId: authenticatedUser.userId,
-      email: authenticatedUser.email,
-      name: authenticatedUser.name,
-      notificationPreferences: {
-        email: true,
-        inApp: true,
-        successNotifications: true,
-        errorNotifications: true,
-        reminderNotifications: true,
-      },
-      manualConfirmationEnabled: false,
-      lastSyncTime: now,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    await dynamoDocClient.send(new PutCommand({
-      TableName: config.tables.users,
-      Item: {
-        ...newUser,
-        lastSyncTime: now.toISOString(),
-        createdAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-      },
-    }));
-
-    return newUser;
+    return [];
   }
+  const out = items
+    .filter((g): g is string => typeof g === 'string')
+    .map((g) => g.trim().replace(/^["']+|["']+$/g, ''))
+    .filter((g) => g.length > 0);
+  return Array.from(new Set(out));
 }
 
-/**
- * Retrieves user profile from DynamoDB
- */
-export async function getUserProfile(userId: string): Promise<UserProfile | null> {
-  try {
-    const result = await dynamoDocClient.send(new GetCommand({
-      TableName: config.tables.users,
-      Key: { userId },
-    }));
-
-    return result.Item as UserProfile || null;
-  } catch (error) {
-    console.error('Error retrieving user profile:', error);
-    return null;
+/** Extract the caller from authorizer claims. Throws Unauthorized if absent. */
+export function getAuth(event: EventWithClaims): AuthContext {
+  const claims = event.requestContext?.authorizer?.claims;
+  const sub = claims?.sub;
+  if (!claims || typeof sub !== 'string' || sub.length === 0) {
+    throw new Unauthorized();
   }
+  return {
+    userId: sub,
+    email: typeof claims.email === 'string' ? claims.email : '',
+    groups: parseGroups(claims['cognito:groups']),
+  };
 }
 
-/**
- * Middleware function to authenticate API Gateway requests
- */
-export async function authenticateRequest(event: APIGatewayProxyEvent): Promise<{
-  user: AuthenticatedUser;
-  profile: UserProfile;
-}> {
-  const user = await extractAuthFromEvent(event);
-  const profile = await createOrUpdateUserProfile(user);
-  
-  return { user, profile };
+export function isAdmin(auth: AuthContext): boolean {
+  return auth.groups.includes('admin');
 }
 
-/**
- * Invalidates user session (for logout)
- */
-export async function invalidateSession(userId: string): Promise<void> {
-  // In a real implementation, you might want to maintain a blacklist of tokens
-  // or use Cognito's global sign out functionality
-  // For now, we'll just log the logout action
-  console.log(`User ${userId} logged out`);
+/** Require the `admin` group; throws Forbidden (403) otherwise. */
+export function requireAdmin(event: EventWithClaims): AuthContext {
+  const auth = getAuth(event);
+  if (!auth.groups.includes('admin')) throw new Forbidden('Admin access required');
+  return auth;
 }
 
-/**
- * Gets user profile from API Gateway event (convenience function)
- */
-export async function getUserFromEvent(event: APIGatewayProxyEvent): Promise<UserProfile | null> {
-  try {
-    const { profile } = await authenticateRequest(event);
-    return profile;
-  } catch (error) {
-    console.error('Authentication failed:', error);
-    return null;
-  }
+/** Require the `speaker` group; throws Forbidden (403) otherwise. */
+export function requireSpeaker(event: EventWithClaims): AuthContext {
+  const auth = getAuth(event);
+  if (!auth.groups.includes('speaker')) throw new Forbidden('Speaker access required');
+  return auth;
 }

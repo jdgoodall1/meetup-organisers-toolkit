@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { AuthContextType, UserProfile } from '../types';
+import { AuthContextType, Role, UserProfile } from '../types';
+import { groupsFromClaim, roleFromGroups } from '../utils/roles';
 import { 
   signIn, 
   signUp,
@@ -13,6 +14,7 @@ import '../aws-config'; // Initialize Amplify configuration
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
@@ -27,6 +29,8 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [role, setRole] = useState<Role | null>(null);
+  const [groups, setGroups] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Convert Cognito user to UserProfile
@@ -35,30 +39,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       userId: cognitoUser.userId,
       email: cognitoUser.signInDetails?.loginId || '',
       name: cognitoUser.signInDetails?.loginId || '', // Will be updated from user attributes
-      notificationPreferences: {
-        email: true,
-        inApp: true,
-        successNotifications: true,
-        errorNotifications: true,
-        reminderNotifications: true,
-      },
-      manualConfirmationEnabled: false,
-      lastSyncTime: new Date(),
       createdAt: new Date(),
       updatedAt: new Date(),
     };
   };
 
   // Check for existing authentication session
-  const checkAuthState = async () => {
+  const checkAuthState = async (forceRefresh = false) => {
     try {
       setLoading(true);
       const currentUser = await getCurrentUser();
-      const session = await fetchAuthSession();
+      const session = await fetchAuthSession(forceRefresh ? { forceRefresh: true } : undefined);
       
       if (currentUser && session.tokens) {
         const userProfile = convertCognitoUser(currentUser);
         setUser(userProfile);
+        const claim = session.tokens.idToken?.payload?.['cognito:groups'];
+        setRole(roleFromGroups(claim));
+        setGroups(groupsFromClaim(claim));
         
         // Store session info for API calls
         localStorage.setItem('accessToken', session.tokens.accessToken?.toString() || '');
@@ -69,19 +67,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (intendedDestination) {
           localStorage.removeItem('intendedDestination');
           window.location.href = intendedDestination;
-        } else if (window.location.pathname === '/login' || window.location.pathname === '/callback') {
-          window.location.href = '/dashboard';
         }
+        // Otherwise the router redirects by role (see homePathForRole).
       }
     } catch (error) {
       console.log('No authenticated user found:', error);
       setUser(null);
+      setRole(null);
+      setGroups([]);
       // Clear any stored tokens
       localStorage.removeItem('accessToken');
       localStorage.removeItem('idToken');
       
       // Store intended destination for post-login redirect
-      if (window.location.pathname !== '/login' && window.location.pathname !== '/callback') {
+      if (window.location.pathname !== '/login') {
         localStorage.setItem('intendedDestination', window.location.pathname);
       }
     } finally {
@@ -91,6 +90,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   useEffect(() => {
     checkAuthState();
+    // Run once on mount; auth flow is reworked in a later task.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const login = async (email: string, password: string): Promise<void> => {
@@ -157,6 +158,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (error instanceof Error) {
         if (error.message.includes('UsernameExistsException') || error.message.includes('already exists')) {
           throw new Error('An account with this email already exists. Please try logging in instead.');
+        } else if (error.message.includes('Password did not conform with policy')) {
+          // Server-side backstop; the sign-up form validates client-side first.
+          const detail = error.message.split('Password did not conform with policy:')[1]?.trim();
+          const reason = detail
+            ? detail.charAt(0).toLowerCase() + detail.slice(1).replace(/\.$/, '')
+            : 'it does not meet the requirements';
+          throw new Error(
+            `Your password doesn't meet the requirements: ${reason}. Use at least 8 characters with an uppercase letter, a lowercase letter and a number.`
+          );
         } else {
           throw new Error(error.message);
         }
@@ -211,6 +221,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       await signOut();
       setUser(null);
+      setRole(null);
+      setGroups([]);
       // Clear stored tokens
       localStorage.removeItem('accessToken');
       localStorage.removeItem('idToken');
@@ -218,6 +230,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.error('Logout error:', error);
       // Force logout on client side even if server call fails
       setUser(null);
+      setRole(null);
+      setGroups([]);
       localStorage.removeItem('accessToken');
       localStorage.removeItem('idToken');
     }
@@ -226,6 +240,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const value: AuthContextType = {
     user,
     isAuthenticated: !!user,
+    role,
+    groups,
+    canUseSpeakerView: groups.includes('speaker'),
+    canUseAdminView: groups.includes('admin'),
+    refreshSession: () => checkAuthState(true),
     login,
     signup,
     confirmSignup,
